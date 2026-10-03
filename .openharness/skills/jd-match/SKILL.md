@@ -15,6 +15,8 @@ description: 解析职位描述(JD)并按三段式(硬性过滤→语义召回�
 
 1. **第一步永远是调用 `mcp__job-agent-data_job-agent-data__get_profile` 工具**。它返回用户画像;若返回 error 字段,告知用户运行 `python scripts/seed_profile.py` 后重试,流程终止。
 2. **硬性过滤**(纯规则,只看用户底线):`hard_filter_pass=false` 仅当 城市不在期望城市、或 JD 薪资低于用户底线。**JD 要求的经验年限高于用户当前年限属于差距,不算硬性失败**;JD 未提及该项视为通过,并在差距清单注明"JD 未说明"。
+
+   > **在校/应届画像**:若 `resume.basics.身份` 含"在校""应届"或"实习",按校招口径评估——用实习与项目经历替代工作年限,preferences 的 `经验底线` 不参与硬性过滤,薪资底线按 JD 薪资类型(月薪/日薪/年薪)对应比较。
 3. **语义召回**:调用 `mcp__job-agent-data_job-agent-data__semantic_score`,传入完整 JD 原文,得到 0-100 相似分。禁止自己估算语义分。
 4. **结构化解析**:把 JD 整理成如下结构(不确定的字段填 null,禁止编造):
 

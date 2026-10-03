@@ -28,13 +28,18 @@ def db() -> sqlite3.Connection:
 
 
 def _resume_text(resume: dict) -> str:
-    """把结构化画像压成一段供 embedding 的文本。"""
+    """把结构化画像压成一段供 embedding 的文本(工作/实习、项目、校园经历都覆盖)。"""
     parts = []
     basics = resume.get("basics") or {}
     parts.append(" ".join(str(v) for v in basics.values() if v))
     parts.extend(resume.get("skills") or [])
     for exp in resume.get("experiences") or []:
         parts.append(" ".join(str(v) for v in exp.values() if v))
+    for proj in resume.get("projects") or []:
+        parts.append(" ".join(str(v) for v in proj.values() if v))
+    campus = resume.get("campus") or {}
+    if campus:
+        parts.append(" ".join(str(v) for v in campus.values() if v))
     parts.append(resume.get("summary_text") or "")
     return " ".join(p for p in parts if p)[:4000]
 
@@ -81,7 +86,13 @@ def get_profile(profile_name: str = "default") -> dict:
             if len(only) == 1:
                 row = only[0]
     if row is None:
-        return {"error": f"profile '{profile_name}' 不存在,先运行 scripts/seed_profile.py"}
+        with db() as conn:
+            names = [r["name"] for r in conn.execute("SELECT name FROM profile")]
+        return {
+            "error": f"profile '{profile_name}' 不存在",
+            "available": names,
+            "hint": "用 available 列表中的名字重试,或运行 scripts/seed_profile.py 导入",
+        }
     return {
         "name": row["name"],
         "resume": json.loads(row["resume_json"]),
