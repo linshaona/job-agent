@@ -45,6 +45,21 @@ def main() -> None:
         [str(OH), "-p", prompt, "--permission-mode", "auto", "--max-turns", "30"],
         cwd=str(ROOT),
     )
+    # 成本埋点:OpenHarness v0.1.9 不回传 usage,先按调用次数记账(本地模型成本为 0)
+    import sqlite3
+
+    model = "qwen3.5-4b-agent"
+    dot = ROOT / ".env"
+    if dot.exists():
+        for line in dot.read_text(encoding="utf-8").splitlines():
+            if line.strip().startswith("LLM_MODEL="):
+                model = line.partition("=")[2].strip()
+    with sqlite3.connect(ROOT / "data" / "job.db") as conn:
+        conn.execute(
+            "INSERT INTO cost_log (scene, model, prompt_tokens, completion_tokens, cost_cny)"
+            " VALUES ('match', ?, 0, 0, 0)",
+            (model,),
+        )
     sys.exit(result.returncode)
 
 

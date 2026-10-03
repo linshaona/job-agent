@@ -225,5 +225,33 @@ def list_jobs(limit: int = 20) -> list:
     return [dict(r) for r in rows]
 
 
+@mcp.tool()
+def save_interview(
+    job_id: int | str | None = None,
+    jd_text: str = "",
+    transcript: list | str | None = None,
+    rubric_score: dict | str | None = None,
+) -> dict:
+    """保存一次完整面试模拟。transcript 为数组(或 JSON 字符串),元素形如
+    {"question":"...","answer":"...","feedback":"..."};rubric_score 形如
+    {"技术深度":4,"结构化表达":3,"项目真实度":4,"沟通":5,"改进建议":["...","..."]}。
+    面试中途不要调用,结束时调用一次。"""
+    jid = None
+    try:
+        jid = int(job_id) if job_id not in (None, "", "null") else None
+    except (TypeError, ValueError):
+        jid = None
+    tr = _as_obj(transcript)
+    rs = _as_obj(rubric_score)
+    with db() as conn:
+        cur = conn.execute(
+            "INSERT INTO interview_sessions (job_id, transcript, rubric_score) VALUES (?,?,?)",
+            (jid,
+             json.dumps(tr, ensure_ascii=False) if tr else None,
+             json.dumps(rs, ensure_ascii=False) if rs else None),
+        )
+        return {"session_id": cur.lastrowid}
+
+
 if __name__ == "__main__":
     mcp.run()
