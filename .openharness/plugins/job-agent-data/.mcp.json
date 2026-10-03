@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "job-agent-data": {
+      "type": "stdio",
+      "command": "D:/AI learning/job-agent/.venv/Scripts/python.exe",
+      "args": ["mcp-server/main.py"],
+      "cwd": "D:/AI learning/job-agent"
+    }
+  }
+}

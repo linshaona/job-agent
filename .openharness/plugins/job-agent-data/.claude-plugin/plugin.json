@@ -1,0 +1,5 @@
+{
+  "name": "job-agent-data",
+  "version": "0.1.0",
+  "description": "求职数据 MCP 工具:SQLite 读写 + 语义召回"
+}
