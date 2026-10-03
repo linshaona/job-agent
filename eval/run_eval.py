@@ -176,15 +176,16 @@ EXTRACT_PROMPT_HEAD = (
 )
 
 
-def run_extract(cases: list[dict], lines: list[str]) -> dict:
+def run_extract(cases: list[dict], lines: list[str], stamp: str = "") -> dict:
     lines.append("## 1. 抽取字段准确率\n")
     stats = {"title": 0, "company": 0, "location": 0, "salary": 0, "experience_required": 0}
-    skill_covs, rows, n = [], [], 0
+    skill_covs, rows, n, preds = [], [], 0, []
     for c in cases:
         n += 1
         gt = c["gt"]
         try:
             pred = parse_json(chat(EXTRACT_PROMPT_HEAD + c["jd_raw"])) or {}
+            preds.append({"id": c["id"], "pred": pred, "gt": gt})
         except Exception as exc:
             pred, err = {}, str(exc)[:60]
             rows.append(f"| {c['id']} | 调用失败:{err} | - |")
@@ -211,6 +212,10 @@ def run_extract(cases: list[dict], lines: list[str]) -> dict:
     acc = sum(stats.values()) / (len(stats) * n)
     mean_cov = sum(skill_covs) / len(skill_covs) if skill_covs else 0
     lines.append(f"\n**总字段准确率 {acc:.0%} · 技能平均覆盖 {mean_cov:.0%}**(目标:字段 >90%)\n")
+    if stamp:
+        (REPORTS / f"predictions-{stamp}-extract.jsonl").write_text(
+            "\n".join(json.dumps(x, ensure_ascii=False) for x in preds), encoding="utf-8"
+        )
     return {"field_acc": acc, "skill_cov": mean_cov}
 
 
@@ -310,7 +315,7 @@ def main() -> None:
     ]
     t0 = time.time()
     if args.stage in ("all", "extract"):
-        run_extract(cases, lines)
+        run_extract(cases, lines, stamp)
     if args.stage in ("all", "recall"):
         run_recall(cases, profile, lines)
     if args.stage in ("all", "rubric"):
