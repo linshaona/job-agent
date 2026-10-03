@@ -1,0 +1,14 @@
+# 隐私红线:任何个人数据、密钥、评测标注不入库
+*.db
+*.sqlite3
+*.sqlite3-journal
+.env
+profile*.json
+profile*.md
+jd_cache/
+eval/labeled/
+data/*.db
+__pycache__/
+*.pyc
+.venv/
+.idea/
