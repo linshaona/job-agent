@@ -15,6 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from resume_generator import generate_application_package, generate_standard_markdown, get_current_profile_data
+from matcher_engine import analyze_jd_match
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -200,6 +201,83 @@ def get_jobs_list():
             return {"jobs": jobs}
     except Exception as e:
         return {"jobs": [], "error": str(e)}
+
+
+@app.post("/api/match/analyze")
+def analyze_jd(payload: Dict[str, Any]):
+    """
+    在线三段式 JD 匹配与差距分析:
+    1. 实体抽取 (公司、职位、薪资、年限、技术栈)
+    2. 第一段: 规则引擎硬性过滤 (地点、年限、薪资底线)
+    3. 第二段: 技能集合覆盖与重合度
+    4. 第三段: Rubric 量表打分 + 技能差距清单 (Gap List) + 针对性突击建议
+    """
+    jd_text = payload.get("jd_text", "").strip()
+    company = payload.get("company", "").strip()
+    title = payload.get("title", "").strip()
+
+    if not jd_text:
+        raise HTTPException(status_code=400, detail="请提供 JD 文本内容")
+
+    result = analyze_jd_match(jd_text, company, title)
+    return result
+
+
+@app.post("/api/match/save")
+def save_analyzed_match(payload: Dict[str, Any]):
+    """
+    一键将分析完成的岗位与匹配结果持久化存入 SQLite，并自动加入投递看板
+    """
+    company = payload.get("company", "未命名公司")
+    title = payload.get("title", "目标岗位")
+    salary = payload.get("salary", "")
+    jd_raw = payload.get("jd_raw", "")
+    score = payload.get("score", 0)
+    hard_filter_pass = payload.get("hard_filter_pass", 1)
+    gap_list = payload.get("gap_list", [])
+    rubric = payload.get("rubric", {})
+
+    with get_db_connection() as conn:
+        # 1. 存入 jobs
+        c1 = conn.execute(
+            """
+            INSERT INTO jobs (source, company, title, salary, jd_raw)
+            VALUES ('web_analyzer', ?, ?, ?, ?)
+            """,
+            (company, title, salary, jd_raw)
+        )
+        job_id = c1.lastrowid
+
+        # 2. 存入 matches
+        conn.execute(
+            """
+            INSERT INTO matches (job_id, score, hard_filter_pass, detail, gap_list)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                job_id,
+                score,
+                hard_filter_pass,
+                json.dumps(rubric, ensure_ascii=False),
+                json.dumps(gap_list, ensure_ascii=False)
+            )
+        )
+
+        # 3. 自动加入 applications 表作为 pending
+        conn.execute(
+            """
+            INSERT INTO applications (job_id, status, applied_at, next_action, notes)
+            VALUES (?, 'pending', datetime('now', 'localtime'), '', '来自网页智能分析入库')
+            """,
+            (job_id,)
+        )
+        conn.commit()
+
+    return {
+        "status": "success",
+        "job_id": job_id,
+        "message": f"岗位【{company} · {title}】匹配分析结果已成功存入本地数据库，并加入投递看板！"
+    }
 
 
 @app.get("/api/resume/markdown")

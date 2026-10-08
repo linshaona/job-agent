@@ -958,28 +958,196 @@
 
       </div>
 
-      <!-- ========================================== -->
-      <!-- TAB 4: 已匹配岗位库 (Jobs)                -->
-      <!-- ========================================== -->
+      <!-- ========================================================================= -->
+      <!-- TAB 4: 岗位智能匹配与差距分析工坊 (Live JD Matcher & Gap Analyzer)        -->
+      <!-- ========================================================================= -->
       <div v-show="activeTab === 'jobs'" class="space-y-6">
-        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
-          <div class="flex flex-wrap items-center justify-between pb-4 border-b border-slate-100 gap-4">
+        
+        <!-- 核心模块 1: 在线 JD 智能分析台 -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div class="flex items-center space-x-2.5">
+              <span class="text-indigo-600 text-xl font-bold">🎯</span>
+              <div>
+                <h2 class="text-sm font-bold text-slate-900">在线 JD 三段式智能匹配与差距分析</h2>
+                <p class="text-xs text-slate-500">规则硬过滤 · 技能重合度比对 · Rubric 评分量表 · 定位技能差距 Gap List</p>
+              </div>
+            </div>
+
+            <!-- 快捷样例填充 -->
+            <div class="flex items-center space-x-1.5 text-2xs">
+              <span class="text-slate-400">填入测试样例:</span>
+              <button @click="fillSampleJd('agent')" class="px-2 py-1 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded-md font-medium transition">
+                样例 1: AI Agent 研发岗
+              </button>
+              <button @click="fillSampleJd('backend')" class="px-2 py-1 bg-slate-100 hover:bg-purple-50 hover:text-purple-600 rounded-md font-medium transition">
+                样例 2: Python 后端大模型应用
+              </button>
+            </div>
+          </div>
+
+          <!-- 输入区 -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div class="lg:col-span-2 space-y-3">
+              <label class="block text-xs font-semibold text-slate-700">粘贴目标岗位招聘 JD 原文</label>
+              <textarea 
+                v-model="analyzerForm.jd_text" 
+                rows="6" 
+                placeholder="在此粘贴企业招聘职责与任职资格描述 (支持自动抽取公司名、岗位名、薪资与关键技术栈)..." 
+                class="w-full text-xs font-mono p-3.5 bg-slate-50 border border-slate-200 rounded-xl leading-relaxed focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition"
+              ></textarea>
+            </div>
+
+            <div class="space-y-3 flex flex-col justify-between">
+              <div class="space-y-2 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">公司名称 (选填，优先自动识别)</label>
+                  <input v-model="analyzerForm.company" type="text" placeholder="如: 字节跳动 / 阿里巴巴" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">岗位名称 (选填，优先自动识别)</label>
+                  <input v-model="analyzerForm.title" type="text" placeholder="如: AI Agent 研发工程师" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+              </div>
+
+              <button 
+                @click="runJdAnalysis" 
+                :disabled="analyzing || !analyzerForm.jd_text.trim()" 
+                class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 text-white font-bold rounded-xl text-xs shadow-sm shadow-indigo-200 transition flex items-center justify-center space-x-1.5"
+              >
+                <span>{{ analyzing ? '⏳ 正在进行三段式计算...' : '🚀 开始智能分析与差距比对' }}</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 分析结果大卡片 -->
+          <transition name="fade">
+            <div v-if="analysisResult" class="p-5 bg-slate-50/80 rounded-2xl border border-indigo-100 space-y-4">
+              
+              <!-- 顶部得分与要素 -->
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/70">
+                <div class="space-y-1">
+                  <div class="flex items-center space-x-2">
+                    <span class="text-base font-black text-slate-900">{{ analysisResult.company }}</span>
+                    <span class="text-slate-400">·</span>
+                    <span class="text-sm font-bold text-slate-800">{{ analysisResult.title }}</span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-mono font-bold">
+                      {{ analysisResult.salary }}
+                    </span>
+                    <span class="text-xs px-2 py-0.5 rounded bg-slate-200 text-slate-700 font-mono">
+                      {{ analysisResult.location }}
+                    </span>
+                  </div>
+                  <div class="text-xs text-slate-500">经验要求: {{ analysisResult.exp_required }}</div>
+                </div>
+
+                <!-- 综合得分徽章 -->
+                <div class="flex items-center space-x-3">
+                  <div class="text-right">
+                    <div class="text-3xl font-black font-mono leading-none" :class="analysisResult.score >= 80 ? 'text-emerald-600' : (analysisResult.score >= 60 ? 'text-indigo-600' : 'text-slate-500')">
+                      {{ analysisResult.score }} <span class="text-xs font-normal text-slate-400">/ 100</span>
+                    </div>
+                    <div class="text-2xs font-bold mt-1" :class="analysisResult.hard_filter_pass ? 'text-emerald-600' : 'text-rose-600'">
+                      {{ analysisResult.hard_filter_pass ? '✔ 第一段硬性过滤通过' : '✖ 硬过滤未通过' }}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 3 维度量表打分卡片 -->
+              <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <div class="text-slate-400 text-2xs">技能契合度 (45%权重)</div>
+                  <div class="text-sm font-black text-slate-800 font-mono">{{ analysisResult.rubric.skill_match }} / 5 分</div>
+                </div>
+                <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <div class="text-slate-400 text-2xs">业务相关度 (35%权重)</div>
+                  <div class="text-sm font-black text-slate-800 font-mono">{{ analysisResult.rubric.business_match }} / 5 分</div>
+                </div>
+                <div class="p-3 bg-white rounded-xl border border-slate-200 space-y-1">
+                  <div class="text-slate-400 text-2xs">个人成长与加分项 (20%权重)</div>
+                  <div class="text-sm font-black text-slate-800 font-mono">{{ analysisResult.rubric.bonus_match }} / 5 分</div>
+                </div>
+              </div>
+
+              <!-- 技能比对: 契合 vs Gap 清单 -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                <div class="p-3.5 bg-white rounded-xl border border-emerald-100 space-y-2">
+                  <div class="flex items-center space-x-1.5 font-bold text-emerald-800">
+                    <span>🟢</span>
+                    <span>与你画像高度契合技术栈 ({{ analysisResult.matching_skills.length }})</span>
+                  </div>
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="s in analysisResult.matching_skills" :key="s" class="px-2 py-0.5 rounded text-2xs font-mono font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      {{ s }}
+                    </span>
+                    <span v-if="!analysisResult.matching_skills.length" class="text-slate-400 text-2xs">未检测到直接重合</span>
+                  </div>
+                </div>
+
+                <div class="p-3.5 bg-white rounded-xl border border-rose-100 space-y-2">
+                  <div class="flex items-center space-x-1.5 font-bold text-rose-800">
+                    <span>🔴</span>
+                    <span>技能差距清单 (Gap List · 面试重点攻坚)</span>
+                  </div>
+                  <div class="flex flex-wrap gap-1">
+                    <span v-for="g in analysisResult.gap_list" :key="g" class="px-2 py-0.5 rounded text-2xs font-mono font-semibold bg-rose-50 text-rose-600 border border-rose-200">
+                      {{ g }}
+                    </span>
+                    <span v-if="!analysisResult.gap_list.length" class="text-emerald-600 text-2xs">恭喜！JD 核心技能已全部覆盖</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 面试突击与建议 -->
+              <div class="p-3.5 bg-white rounded-xl border border-slate-200 space-y-1.5 text-xs">
+                <div class="font-bold text-slate-800 flex items-center space-x-1">
+                  <span>💡</span>
+                  <span>针对本岗位的突击与面试建议</span>
+                </div>
+                <ul class="list-disc list-outside pl-4 space-y-1 text-slate-600 leading-relaxed text-2xs">
+                  <li v-for="(adv, aIdx) in analysisResult.advice" :key="aIdx">{{ adv }}</li>
+                </ul>
+              </div>
+
+              <!-- 底部一键操作 -->
+              <div class="pt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                <button @click="analysisResult = null" class="text-slate-400 hover:text-slate-600">
+                  清空此结果
+                </button>
+                <div class="flex items-center space-x-2">
+                  <button @click="openPackageModal(analysisResult)" class="px-3.5 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 rounded-lg font-bold transition">
+                    🎁 直接生成本岗位专属投递包
+                  </button>
+                  <button @click="saveAnalyzedMatch" :disabled="savingMatch" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-sm transition">
+                    {{ savingMatch ? '⏳ 正在存入...' : '📥 一键存入本地岗位库并加入投递看板' }}
+                  </button>
+                </div>
+              </div>
+
+            </div>
+          </transition>
+        </div>
+
+        <!-- 核心模块 2: 本地已分析岗位库列表 -->
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+          <div class="flex flex-wrap items-center justify-between pb-3 border-b border-slate-100 gap-4">
             <div>
-              <h2 class="text-base font-bold text-slate-900">本地已分析岗位库</h2>
-              <p class="text-xs text-slate-500">来自 SQLite 数据库 `jobs` 和 `matches` 表</p>
+              <h2 class="text-sm font-bold text-slate-900">本地已录入岗位库</h2>
+              <p class="text-xs text-slate-500">来自 SQLite 数据库 `jobs` 和 `matches` 表 (共 {{ jobsList.length }} 个)</p>
             </div>
             <button @click="fetchJobs" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition">
-              🔄 刷新
+              🔄 刷新列表
             </button>
           </div>
 
-          <div v-if="jobsList.length === 0" class="py-16 text-center text-slate-400 text-sm space-y-2">
-            <div class="text-3xl">📭</div>
-            <p>本地数据库暂无岗位记录</p>
+          <div v-if="jobsList.length === 0" class="py-12 text-center text-slate-400 text-xs space-y-2">
+            <div class="text-2xl">📭</div>
+            <p>暂无岗位记录，可使用上方分析台粘贴 JD 快速录入</p>
           </div>
 
           <div v-else class="divide-y divide-slate-100">
-            <div v-for="job in jobsList" :key="job.id" class="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div v-for="job in jobsList" :key="job.id" class="py-3.5 flex flex-col md:flex-row md:items-center justify-between gap-4">
               <div class="space-y-1">
                 <div class="flex items-center space-x-2">
                   <span class="text-sm font-bold text-slate-900">{{ job.company || '未知公司' }}</span>
@@ -1239,6 +1407,15 @@
           salary: '',
           status: 'pending'
         });
+
+        const analyzerForm = reactive({
+          company: '',
+          title: '',
+          jd_text: ''
+        });
+        const analyzing = ref(false);
+        const analysisResult = ref(null);
+        const savingMatch = ref(false);
 
         const toast = reactive({
           show: false,
@@ -1591,6 +1768,85 @@
           } catch (e) {}
         };
 
+        const fillSampleJd = (type) => {
+          if (type === 'agent') {
+            analyzerForm.company = '某头部大厂 (样例)';
+            analyzerForm.title = 'AI Agent 核心研发工程师';
+            analyzerForm.jd_text = `【职位描述】
+1. 负责企业级自主编码 Agent 与多智能体系统的架构设计与落地；
+2. 熟练掌握 ReAct、ReWOO 规划执行流与动态参数物化，具备 MCP (Model Context Protocol) 协议拓展与工具接入实操经验；
+3. 熟练使用 Python、FastAPI、SQLite/PostgreSQL、Docker、Linux，有单元测试与评测基线搭建经验；
+4. 熟悉 RAG 知识检索、向量数据库、Prompt 提示词工程，具备本地小模型量化与微调经验者优先。
+
+【任职要求】
+- 计算机相关专业本科或硕士在读或应届毕业生；
+- 具备扎实的 Python 编程功底与良好的工程交付习惯；
+- 有大模型应用、自主编码或多智能体项目实操经历者优先。`;
+          } else if (type === 'backend') {
+            analyzerForm.company = '某知名科技公司 (样例)';
+            analyzerForm.title = 'Python 后端与大模型应用开发实习生';
+            analyzerForm.jd_text = `【职责描述】
+1. 参与 Python 后端核心业务接口开发，基于 FastAPI 搭建微服务体系；
+2. 配合算法团队完成大模型 API 封装与 RAG 知识库检索服务搭建；
+3. 熟练掌握 MySQL/SQLite、Redis、Git、pytest 自动化测试。
+
+【岗位要求】
+- 计算机在校本科生或研究生，2026/2027 届毕业生；
+- 熟悉 Linux 环境与 Docker 容器化技术。`;
+          }
+          showToast('已填入测试 JD 样例！');
+        };
+
+        const runJdAnalysis = async () => {
+          if (!analyzerForm.jd_text.trim()) {
+            showToast('请先粘贴 JD 文本', 'error');
+            return;
+          }
+          analyzing.value = true;
+          try {
+            const res = await fetch('/api/match/analyze', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(analyzerForm)
+            });
+            const data = await res.json();
+            if (res.ok) {
+              analysisResult.value = data;
+              showToast(`三段式分析完成！综合匹配得分: ${data.score} 分`);
+            } else {
+              showToast(data.detail || '分析失败', 'error');
+            }
+          } catch (e) {
+            showToast('请求异常: ' + e.message, 'error');
+          } finally {
+            analyzing.value = false;
+          }
+        };
+
+        const saveAnalyzedMatch = async () => {
+          if (!analysisResult.value) return;
+          savingMatch.value = true;
+          try {
+            const res = await fetch('/api/match/save', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(analysisResult.value)
+            });
+            const data = await res.json();
+            if (res.ok) {
+              showToast(data.message);
+              fetchJobs();
+              fetchApplications();
+            } else {
+              showToast('存入失败', 'error');
+            }
+          } catch (e) {
+            showToast('请求异常: ' + e.message, 'error');
+          } finally {
+            savingMatch.value = false;
+          }
+        };
+
         onMounted(() => {
           loadProfileFromServer();
           loadStatus();
@@ -1609,7 +1865,8 @@
           addPreferenceItem, addProject, addExperience, exportJson, handleFileUpload,
           copyJson, fetchJobs, fetchApplications, getAppsByStatus, moveAppStatus, deleteApp,
           fetchResumeMarkdown, printResume, copyResumeMarkdown, downloadResumeMarkdown,
-          openPackageModal, generatePackage, markAsAppliedFromPackage, submitNewJob, copyText
+          openPackageModal, generatePackage, markAsAppliedFromPackage, submitNewJob, copyText,
+          analyzerForm, analyzing, analysisResult, savingMatch, fillSampleJd, runJdAnalysis, saveAnalyzedMatch
         };
       }
     }).mount('#app');
