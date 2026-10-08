@@ -1,0 +1,1443 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Job-Agent 智能求职工作台</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+  <style>
+    [v-cloak] { display: none; }
+    .fade-enter-active, .fade-leave-active { transition: opacity 0.2s ease; }
+    .fade-enter-from, .fade-leave-to { opacity: 0; }
+
+    /* A4 印刷与 PDF 导出优化样式 */
+    @media print {
+      header, .no-print, nav, button, footer {
+        display: none !important;
+      }
+      body, #app, main {
+        background: #ffffff !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+      .resume-paper {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 0.5cm !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      .page-break {
+        page-break-after: always;
+      }
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-800 antialiased min-h-screen">
+  <div id="app" v-cloak class="min-h-screen flex flex-col">
+    
+    <!-- 顶部导航栏 -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm no-print">
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center font-bold text-xl shadow-md shadow-indigo-100">
+            🎯
+          </div>
+          <div>
+            <h1 class="text-base font-bold text-slate-900 leading-tight">Job-Agent 工作台</h1>
+            <p class="text-xs text-slate-500">AI 求职全流程 · 简历生成 · 投递看板 · 本地隐私</p>
+          </div>
+        </div>
+
+        <!-- 核心标签页切换 -->
+        <nav class="flex space-x-1 bg-slate-100 p-1 rounded-xl text-xs sm:text-sm font-medium">
+          <button 
+            @click="activeTab = 'profile'"
+            :class="activeTab === 'profile' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+            class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center space-x-1.5"
+          >
+            <span>📝</span>
+            <span>求职画像</span>
+          </button>
+          <button 
+            @click="activeTab = 'resume'; fetchResumeMarkdown()"
+            :class="activeTab === 'resume' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+            class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center space-x-1.5"
+          >
+            <span>📄</span>
+            <span>简历生成工坊</span>
+          </button>
+          <button 
+            @click="activeTab = 'kanban'; fetchApplications()"
+            :class="activeTab === 'kanban' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+            class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center space-x-1.5"
+          >
+            <span>📌</span>
+            <span>投递看板</span>
+            <span v-if="applications.length" class="ml-1 bg-indigo-100 text-indigo-600 text-2xs px-1.5 py-0.2 rounded-full font-semibold">
+              {{ applications.length }}
+            </span>
+          </button>
+          <button 
+            @click="activeTab = 'jobs'; fetchJobs()"
+            :class="activeTab === 'jobs' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+            class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 hidden md:flex"
+          >
+            <span>💼</span>
+            <span>匹配岗位库</span>
+          </button>
+          <button 
+            @click="activeTab = 'about'"
+            :class="activeTab === 'about' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'"
+            class="px-3 sm:px-4 py-1.5 rounded-lg transition-all flex items-center space-x-1.5 hidden lg:flex"
+          >
+            <span>🧭</span>
+            <span>路线与评测</span>
+          </button>
+        </nav>
+
+        <!-- 状态指示 -->
+        <div class="hidden sm:flex items-center space-x-3 text-xs text-slate-500">
+          <span class="inline-flex items-center px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-medium border border-emerald-100">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-1.5 animate-pulse"></span>
+            本地 SQLite 运行中
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- 浮动操作栏 (Profile 标签专属) -->
+    <div v-if="activeTab === 'profile'" class="bg-white/80 backdrop-blur border-b border-slate-200/80 px-4 sm:px-6 lg:px-8 py-2.5 sticky top-16 z-20 shadow-sm no-print">
+      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center flex-wrap gap-2 text-xs">
+          <span class="text-slate-400 font-medium">快捷操作:</span>
+          <button @click="loadTemplate('student')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium transition">
+            🎓 学生模板
+          </button>
+          <button @click="loadTemplate('default')" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium transition">
+            💼 社招模板
+          </button>
+          <div class="h-4 w-px bg-slate-200 mx-1"></div>
+          <label class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium transition cursor-pointer flex items-center space-x-1">
+            <span>📁 导入 JSON</span>
+            <input type="file" accept=".json" @change="handleFileUpload" class="hidden">
+          </label>
+          <button @click="exportJson" class="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium transition">
+            📥 导出 profile.json
+          </button>
+          <button @click="showRawJson = !showRawJson" :class="showRawJson ? 'bg-indigo-50 text-indigo-600 border border-indigo-200' : 'bg-slate-100 text-slate-700'" class="px-2.5 py-1 rounded-md font-medium transition">
+            🔍 {{ showRawJson ? '收起源码' : 'JSON 源码' }}
+          </button>
+        </div>
+
+        <div class="flex items-center space-x-3">
+          <button @click="saveProfile" :disabled="saving" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 text-white font-medium rounded-lg shadow-sm shadow-indigo-200 flex items-center space-x-1.5 text-xs transition">
+            <span v-if="saving">⏳ 同步中...</span>
+            <span v-else>💾 保存并同步入库</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 主体区域 -->
+    <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8">
+
+      <!-- ========================================== -->
+      <!-- TAB 1: 画像编辑 (Profile Editor)          -->
+      <!-- ========================================== -->
+      <div v-show="activeTab === 'profile'" class="space-y-6">
+        
+        <!-- JSON 源码折叠面板 -->
+        <transition name="fade">
+          <div v-if="showRawJson" class="bg-slate-900 rounded-2xl p-4 shadow-xl text-slate-200 font-mono text-xs overflow-x-auto relative mb-6 border border-slate-800">
+            <div class="flex justify-between items-center mb-2 pb-2 border-b border-slate-800">
+              <span class="text-slate-400 font-sans font-semibold">profile.json (实时预览)</span>
+              <button @click="copyJson" class="text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-1 rounded">
+                {{ copied ? '已复制 ✔' : '复制 JSON' }}
+              </button>
+            </div>
+            <pre class="max-h-80 overflow-y-auto leading-relaxed">{{ JSON.stringify(profileData, null, 2) }}</pre>
+          </div>
+        </transition>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+          <!-- 左侧：基础信息、偏好、校园荣誉 -->
+          <div class="space-y-6 lg:col-span-1">
+            
+            <!-- 基础信息卡片 -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                  <span class="text-indigo-600 text-lg">👤</span>
+                  <h2 class="text-sm font-bold text-slate-900">基础身份信息</h2>
+                </div>
+                <div class="flex items-center space-x-1">
+                  <span class="text-xs text-slate-400">标识:</span>
+                  <input v-model="profileData.name" type="text" placeholder="my_profile" class="w-24 px-2 py-0.5 text-xs bg-slate-50 border border-slate-200 rounded text-indigo-700 font-semibold text-center focus:outline-none focus:border-indigo-500">
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">姓名 / 称呼</label>
+                  <input v-model="basics.姓名" type="text" placeholder="你的姓名" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">当前身份</label>
+                  <input v-model="basics.身份" type="text" placeholder="应届/本科在读" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">毕业院校</label>
+                  <input v-model="basics.学校" type="text" placeholder="毕业/在读学校" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">所学专业</label>
+                  <input v-model="basics.专业" type="text" placeholder="计算机/软件等" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">最高学历</label>
+                  <input v-model="education.学历" type="text" placeholder="本科 / 硕士" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">毕业时间</label>
+                  <input v-model="basics.毕业时间" type="text" placeholder="2026.06 / 2027.06" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-slate-500 mb-1">求职类型</label>
+                  <input v-model="basics.求职类型" type="text" placeholder="日常实习 / 暑期实习 / 秋招校招" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 transition">
+                </div>
+              </div>
+            </div>
+
+            <!-- 求职偏好 -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-4">
+              <div class="flex items-center space-x-2 pb-3 border-b border-slate-100">
+                <span class="text-amber-500 text-lg">🎯</span>
+                <div>
+                  <h2 class="text-sm font-bold text-slate-900">求职偏好与过滤底线</h2>
+                  <p class="text-xs text-slate-400">直接用于算法第一阶段硬过滤与召回</p>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">目标岗位 (回车添加)</label>
+                <div class="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg min-h-[42px] items-center">
+                  <span v-for="(job, idx) in preferences.目标岗位" :key="idx" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-700 border border-amber-200">
+                    {{ job }}
+                    <button @click="preferences.目标岗位.splice(idx, 1)" class="ml-1 text-amber-500 hover:text-amber-700">×</button>
+                  </span>
+                  <input v-model="newTargetJob" @keydown.enter.prevent="addPreferenceItem('目标岗位', newTargetJob); newTargetJob = ''" placeholder="输入岗位回车..." class="bg-transparent text-xs outline-none flex-1 min-w-[80px]">
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">期望城市 (回车添加)</label>
+                <div class="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg min-h-[42px] items-center">
+                  <span v-for="(city, idx) in preferences.期望城市" :key="idx" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-sky-50 text-sky-700 border border-sky-200">
+                    {{ city }}
+                    <button @click="preferences.期望城市.splice(idx, 1)" class="ml-1 text-sky-500 hover:text-sky-700">×</button>
+                  </span>
+                  <input v-model="newTargetCity" @keydown.enter.prevent="addPreferenceItem('期望城市', newTargetCity); newTargetCity = ''" placeholder="如: 上海, 杭州..." class="bg-transparent text-xs outline-none flex-1 min-w-[80px]">
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">薪资底线</label>
+                  <input v-model="preferences.薪资底线" type="text" placeholder="如: 实习 250/天, 18k" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">经验底线</label>
+                  <input v-model="preferences.经验底线" type="text" placeholder="应届可留空" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs text-slate-500 mb-1">偏好加分项</label>
+                <div class="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg min-h-[42px] items-center">
+                  <span v-for="(bonus, idx) in preferences.加分项" :key="idx" class="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    {{ bonus }}
+                    <button @click="preferences.加分项.splice(idx, 1)" class="ml-1 text-emerald-500 hover:text-emerald-700">×</button>
+                  </span>
+                  <input v-model="newBonusItem" @keydown.enter.prevent="addPreferenceItem('加分项', newBonusItem); newBonusItem = ''" placeholder="如: 可转正、开源仓库..." class="bg-transparent text-xs outline-none flex-1 min-w-[80px]">
+                </div>
+              </div>
+            </div>
+
+            <!-- 校园资质与荣誉 -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+              <div class="flex items-center space-x-2 pb-2 border-b border-slate-100">
+                <span class="text-rose-500 text-lg">🏅</span>
+                <h2 class="text-sm font-bold text-slate-900">校园资质与荣誉</h2>
+              </div>
+              <div class="space-y-3 text-xs">
+                <div>
+                  <label class="block text-slate-500 mb-1">英语水平</label>
+                  <input v-model="campus.英语" type="text" placeholder="CET-6 530+ / 雅思 7.0" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">竞赛获奖</label>
+                  <input v-model="campus.竞赛" type="text" placeholder="编程竞赛省二等奖、数学建模" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                </div>
+                <div>
+                  <label class="block text-slate-500 mb-1">奖学金 / 荣誉</label>
+                  <input v-model="campus.奖学金" type="text" placeholder="校优秀学生奖学金、国家励志奖学金" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <!-- 右侧：技能标签、自我评价、核心项目、实习经历 -->
+          <div class="space-y-6 lg:col-span-2">
+
+            <!-- 自我总结摘要 -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                  <span class="text-indigo-600 text-lg">💬</span>
+                  <h2 class="text-sm font-bold text-slate-900">个人简介与亮点综述 (Summary)</h2>
+                </div>
+                <span class="text-xs text-slate-400 font-mono">{{ (resume.summary_text || '').length }} 字</span>
+              </div>
+              <textarea 
+                v-model="resume.summary_text" 
+                rows="3" 
+                placeholder="简明扼要的一段话介绍自己的技术栈、工程实操沉淀、近期方向及求职目标..." 
+                class="w-full px-3 py-2.5 text-xs text-slate-800 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-500 leading-relaxed transition"
+              ></textarea>
+            </div>
+
+            <!-- 核心专业技能标签 -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-3">
+              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                  <span class="text-blue-600 text-lg">⚡</span>
+                  <div>
+                    <h2 class="text-sm font-bold text-slate-900">核心技能清单 (Skills)</h2>
+                    <p class="text-xs text-slate-400">用于向量嵌入计算与 JD 技能重合度比对</p>
+                  </div>
+                </div>
+                <span class="text-xs text-slate-400 font-mono">共 {{ (resume.skills || []).length }} 项</span>
+              </div>
+
+              <!-- 技能 Tag 容器 -->
+              <div class="flex flex-wrap gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl min-h-[50px] items-center">
+                <span 
+                  v-for="(skill, idx) in resume.skills" 
+                  :key="idx" 
+                  class="inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100 shadow-2xs"
+                >
+                  {{ skill }}
+                  <button @click="resume.skills.splice(idx, 1)" class="ml-1.5 text-indigo-400 hover:text-indigo-600">×</button>
+                </span>
+                <input 
+                  v-model="newSkillInput" 
+                  @keydown.enter.prevent="addSkill" 
+                  @keydown="handleSkillKeydown"
+                  placeholder="输入技能按回车或逗号添加..." 
+                  class="bg-transparent text-xs text-slate-800 outline-none flex-1 min-w-[120px] py-1"
+                >
+              </div>
+
+              <!-- 常用推荐技能快速添加 -->
+              <div class="flex flex-wrap items-center gap-1.5 pt-1 text-xs">
+                <span class="text-slate-400 text-2xs mr-1">推荐点击添加:</span>
+                <button 
+                  v-for="preset in presetSkills" 
+                  :key="preset" 
+                  @click="addPresetSkill(preset)" 
+                  class="px-2 py-0.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 rounded-md transition"
+                >
+                  + {{ preset }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 项目经历 (Projects) -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                  <span class="text-emerald-600 text-lg">🚀</span>
+                  <div>
+                    <h2 class="text-sm font-bold text-slate-900">核心项目经历 (Projects)</h2>
+                    <p class="text-xs text-slate-400">已为你提炼 issue-pr-agent 和 job-agent 的 STAR 架构亮点</p>
+                  </div>
+                </div>
+                <button @click="addProject" class="px-3 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-medium rounded-lg text-xs transition">
+                  + 添加项目
+                </button>
+              </div>
+
+              <div class="space-y-4">
+                <div v-for="(proj, pIdx) in resume.projects" :key="pIdx" class="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 relative group">
+                  <button @click="resume.projects.splice(pIdx, 1)" class="absolute top-3 right-3 text-slate-400 hover:text-rose-600 text-xs font-medium px-2 py-1 rounded hover:bg-rose-50 transition">
+                    删除
+                  </button>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs pr-16">
+                    <div>
+                      <label class="block text-slate-500 mb-1">项目名称</label>
+                      <input v-model="proj.名称" type="text" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500 font-medium">
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 mb-1">担任角色</label>
+                      <input v-model="proj.角色" type="text" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                    </div>
+                  </div>
+
+                  <!-- 亮点 Bullets -->
+                  <div class="space-y-2 pt-2 border-t border-slate-200/60">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-semibold text-slate-600">项目亮点与成果 Bullets</span>
+                      <button @click="proj.亮点.push('')" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                        + 增加亮点
+                      </button>
+                    </div>
+                    <div v-for="(bullet, bIdx) in proj.亮点" :key="bIdx" class="flex items-center space-x-2">
+                      <span class="text-slate-400 text-xs">●</span>
+                      <input v-model="proj.亮点[bIdx]" type="text" class="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                      <button @click="proj.亮点.splice(bIdx, 1)" class="text-slate-400 hover:text-rose-500 text-sm px-1">×</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 实习与工作经历 (Experiences) -->
+            <div class="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-sm space-y-4">
+              <div class="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div class="flex items-center space-x-2">
+                  <span class="text-purple-600 text-lg">🏢</span>
+                  <div>
+                    <h2 class="text-sm font-bold text-slate-900">实习与工作经历 (Experiences)</h2>
+                    <p class="text-xs text-slate-400">应届无实习可留空，或点击添加</p>
+                  </div>
+                </div>
+                <button @click="addExperience" class="px-3 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 font-medium rounded-lg text-xs transition">
+                  + 添加经历
+                </button>
+              </div>
+
+              <div class="space-y-4">
+                <div v-for="(exp, eIdx) in resume.experiences" :key="eIdx" class="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-3 relative group">
+                  <button @click="resume.experiences.splice(eIdx, 1)" class="absolute top-3 right-3 text-slate-400 hover:text-rose-600 text-xs font-medium px-2 py-1 rounded hover:bg-rose-50 transition">
+                    删除
+                  </button>
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs pr-16">
+                    <div>
+                      <label class="block text-slate-500 mb-1">公司名称</label>
+                      <input v-model="exp.公司" type="text" placeholder="公司名" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 mb-1">职位角色</label>
+                      <input v-model="exp.职位" type="text" placeholder="后端实习生 / AI 工程师" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                    </div>
+                    <div>
+                      <label class="block text-slate-500 mb-1">在职时间</label>
+                      <input v-model="exp.时间" type="text" placeholder="2026.03 - 2026.06" class="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                    </div>
+                  </div>
+
+                  <!-- 成果亮点 -->
+                  <div class="space-y-2 pt-2 border-t border-slate-200/60">
+                    <div class="flex justify-between items-center">
+                      <span class="text-xs font-semibold text-slate-600">工作成果亮点</span>
+                      <button @click="exp.亮点.push('')" class="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                        + 增加亮点
+                      </button>
+                    </div>
+                    <div v-for="(bullet, bIdx) in exp.亮点" :key="bIdx" class="flex items-center space-x-2">
+                      <span class="text-slate-400 text-xs">●</span>
+                      <input v-model="exp.亮点[bIdx]" type="text" placeholder="量化产出、难点攻坚..." class="flex-1 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:border-indigo-500">
+                      <button @click="exp.亮点.splice(bIdx, 1)" class="text-slate-400 hover:text-rose-500 text-sm px-1">×</button>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="!resume.experiences || resume.experiences.length === 0" class="text-center py-6 text-slate-400 text-xs">
+                  暂无经历，若为应届无实习可留空
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 2: 简历生成工坊 (Resume Generator)    -->
+      <!-- ========================================== -->
+      <div v-show="activeTab === 'resume'" class="space-y-6">
+        
+        <!-- 操作栏 -->
+        <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 no-print">
+          <div class="flex items-center space-x-3">
+            <span class="text-indigo-600 text-xl font-bold">📄</span>
+            <div>
+              <h2 class="text-sm font-bold text-slate-900">A4 印刷级标准简历实时渲染</h2>
+              <p class="text-xs text-slate-500">参考 Reactive-Resume 规范 · ATS 友好 · 纯净排版</p>
+            </div>
+          </div>
+
+          <div class="flex items-center flex-wrap gap-2 text-xs">
+            <button @click="openPackageModal(null)" class="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-lg shadow-sm transition flex items-center space-x-1.5">
+              <span>🎁</span>
+              <span>生成岗位专属投递包</span>
+            </button>
+            <button @click="printResume" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg transition flex items-center space-x-1.5">
+              <span>🖨️</span>
+              <span>打印 / 导出 PDF</span>
+            </button>
+            <button @click="copyResumeMarkdown" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition">
+              📋 复制 Markdown
+            </button>
+            <button @click="downloadResumeMarkdown" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition">
+              📥 下载 .md
+            </button>
+          </div>
+        </div>
+
+        <!-- A4 拟真预览白纸容器 -->
+        <div class="resume-paper bg-white max-w-4xl mx-auto p-10 sm:p-14 rounded-2xl border border-slate-200 shadow-xl space-y-6 text-slate-800">
+          
+          <!-- 头部个人信息 -->
+          <div class="border-b border-slate-200 pb-5 text-center space-y-2">
+            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              {{ basics.姓名 || '个人简历' }}
+            </h1>
+            <div class="text-xs sm:text-sm text-slate-600 flex flex-wrap justify-center items-center gap-x-3 gap-y-1 font-medium">
+              <span v-if="basics.身份">{{ basics.身份 }}</span>
+              <span v-if="basics.求职类型">求职意向: {{ basics.求职类型 }}</span>
+              <span v-if="basics.学校">{{ basics.学校 }} · {{ basics.专业 }}</span>
+              <span v-if="education.学历">{{ education.学历 }}</span>
+              <span v-if="basics.毕业时间">{{ basics.毕业时间 }} 毕业</span>
+            </div>
+          </div>
+
+          <!-- 个人综述 -->
+          <div v-if="resume.summary_text" class="space-y-1.5">
+            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+              个人综述 / Summary
+            </h2>
+            <p class="text-xs text-slate-700 leading-relaxed text-justify">
+              {{ resume.summary_text }}
+            </p>
+          </div>
+
+          <!-- 专业技能 -->
+          <div v-if="resume.skills && resume.skills.length" class="space-y-1.5">
+            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+              专业技能 / Technical Skills
+            </h2>
+            <div class="text-xs text-slate-700 flex flex-wrap gap-1.5 pt-0.5">
+              <span v-for="skill in resume.skills" :key="skill" class="px-2 py-0.5 bg-slate-100 rounded text-slate-800 font-mono text-2xs font-semibold">
+                {{ skill }}
+              </span>
+            </div>
+          </div>
+
+          <!-- 核心项目经历 -->
+          <div v-if="resume.projects && resume.projects.length" class="space-y-3">
+            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+              核心项目经历 / Key Projects
+            </h2>
+            <div v-for="proj in resume.projects" :key="proj.名称" class="space-y-1.5">
+              <div class="flex justify-between items-center text-xs font-bold text-slate-900">
+                <span class="text-sm font-bold text-slate-800">{{ proj.名称 }}</span>
+                <span class="text-slate-500 font-medium">{{ proj.角色 }}</span>
+              </div>
+              <ul class="list-disc list-outside pl-4 space-y-1 text-xs text-slate-700 leading-relaxed">
+                <li v-for="bullet in proj.亮点" :key="bullet" v-show="bullet.trim()">
+                  {{ bullet }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- 实习与工作经历 -->
+          <div v-if="resume.experiences && resume.experiences.length" class="space-y-3">
+            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+              实习与工作经历 / Experience
+            </h2>
+            <div v-for="exp in resume.experiences" :key="exp.公司" class="space-y-1.5">
+              <div class="flex justify-between items-center text-xs font-bold text-slate-900">
+                <span class="text-sm font-bold text-slate-800">{{ exp.公司 }} · {{ exp.职位 }}</span>
+                <span class="text-slate-500 font-medium">{{ exp.时间 }}</span>
+              </div>
+              <ul class="list-disc list-outside pl-4 space-y-1 text-xs text-slate-700 leading-relaxed">
+                <li v-for="bullet in exp.亮点" :key="bullet" v-show="bullet.trim()">
+                  {{ bullet }}
+                </li>
+              </ul>
+            </div>
+          </div>
+
+          <!-- 教育背景 -->
+          <div v-if="basics.学校 || education.学校" class="space-y-1.5">
+            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+              教育背景 / Education
+            </h2>
+            <div class="flex justify-between text-xs text-slate-800 font-medium">
+              <span>{{ basics.学校 || education.学校 }} · {{ basics.专业 || education.专业 }}</span>
+              <span class="text-slate-500">{{ education.学历 || basics.最高学历 }} ({{ basics.毕业时间 || education.时间 }})</span>
+            </div>
+          </div>
+
+          <!-- 荣誉资质 -->
+          <div v-if="campus.英语 || campus.竞赛 || campus.奖学金" class="space-y-1.5">
+            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+              荣誉与资质 / Honors
+            </h2>
+            <div class="text-xs text-slate-700 space-y-0.5">
+              <div v-if="campus.英语">● 语言能力: {{ campus.英语 }}</div>
+              <div v-if="campus.竞赛">● 竞赛获奖: {{ campus.竞赛 }}</div>
+              <div v-if="campus.奖学金">● 奖学金荣誉: {{ campus.奖学金 }}</div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 3: 求职投递看板 (Application Kanban)  -->
+      <!-- ========================================== -->
+      <div v-show="activeTab === 'kanban'" class="space-y-6">
+
+        <!-- 看板顶栏 -->
+        <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+          <div class="flex items-center space-x-3">
+            <span class="text-indigo-600 text-xl font-bold">📌</span>
+            <div>
+              <h2 class="text-sm font-bold text-slate-900">求职投递看板与生命周期管理</h2>
+              <p class="text-xs text-slate-500">追踪每个岗位的投递进度 · 附专属投递包生成</p>
+            </div>
+          </div>
+
+          <div class="flex items-center space-x-2">
+            <button @click="showAddJobModal = true" class="px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg text-xs shadow-sm transition flex items-center space-x-1">
+              <span>+</span>
+              <span>录入新岗位</span>
+            </button>
+            <button @click="fetchApplications" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg text-xs transition">
+              🔄 刷新
+            </button>
+          </div>
+        </div>
+
+        <!-- 看板列布局 (Kanban 5 列) -->
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+
+          <!-- 列 1: 待投递 / 准备中 -->
+          <div class="bg-slate-100/70 rounded-2xl p-3 border border-slate-200/80 space-y-3">
+            <div class="flex justify-between items-center px-1">
+              <span class="text-xs font-bold text-slate-700 flex items-center space-x-1">
+                <span>📋</span>
+                <span>准备投递</span>
+              </span>
+              <span class="text-2xs bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded-full font-bold">
+                {{ getAppsByStatus('pending').length }}
+              </span>
+            </div>
+            
+            <div class="space-y-2.5">
+              <div v-for="app in getAppsByStatus('pending')" :key="app.app_id" class="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs space-y-2 hover:shadow-sm transition">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <h3 class="text-xs font-bold text-slate-900">{{ app.company }}</h3>
+                    <p class="text-2xs text-slate-600 font-medium">{{ app.title }}</p>
+                  </div>
+                  <span v-if="app.score" class="text-2xs font-bold px-1.5 py-0.5 rounded" :class="app.score >= 80 ? 'bg-emerald-50 text-emerald-700' : 'bg-slate-100 text-slate-600'">
+                    {{ app.score }}分
+                  </span>
+                </div>
+                <div v-if="app.salary" class="text-2xs text-emerald-600 font-mono font-medium">{{ app.salary }}</div>
+                
+                <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-2xs">
+                  <button @click="openPackageModal(app)" class="text-indigo-600 hover:text-indigo-800 font-semibold flex items-center space-x-0.5">
+                    <span>🎁 投递包</span>
+                  </button>
+                  <button @click="moveAppStatus(app, 'applied')" class="px-2 py-0.5 bg-slate-100 hover:bg-emerald-50 hover:text-emerald-700 rounded text-slate-600 font-medium transition">
+                    标记投递 →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列 2: 已投递 -->
+          <div class="bg-sky-50/40 rounded-2xl p-3 border border-sky-100 space-y-3">
+            <div class="flex justify-between items-center px-1">
+              <span class="text-xs font-bold text-sky-800 flex items-center space-x-1">
+                <span>🚀</span>
+                <span>已投递</span>
+              </span>
+              <span class="text-2xs bg-sky-100 text-sky-700 px-1.5 py-0.5 rounded-full font-bold">
+                {{ getAppsByStatus('applied').length }}
+              </span>
+            </div>
+
+            <div class="space-y-2.5">
+              <div v-for="app in getAppsByStatus('applied')" :key="app.app_id" class="bg-white p-3.5 rounded-xl border border-sky-100 shadow-2xs space-y-2 hover:shadow-sm transition">
+                <div>
+                  <h3 class="text-xs font-bold text-slate-900">{{ app.company }}</h3>
+                  <p class="text-2xs text-slate-600 font-medium">{{ app.title }}</p>
+                </div>
+                <div class="text-2xs text-slate-400">投递于: {{ app.applied_at ? app.applied_at.slice(0, 10) : '近期' }}</div>
+
+                <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-2xs">
+                  <button @click="openPackageModal(app)" class="text-slate-500 hover:text-slate-800">
+                    话术复查
+                  </button>
+                  <button @click="moveAppStatus(app, 'interview')" class="px-2 py-0.5 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded font-medium transition">
+                    进面试 →
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列 3: 面试中 -->
+          <div class="bg-indigo-50/40 rounded-2xl p-3 border border-indigo-100 space-y-3">
+            <div class="flex justify-between items-center px-1">
+              <span class="text-xs font-bold text-indigo-800 flex items-center space-x-1">
+                <span>💬</span>
+                <span>面试中</span>
+              </span>
+              <span class="text-2xs bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-bold">
+                {{ getAppsByStatus('interview').length }}
+              </span>
+            </div>
+
+            <div class="space-y-2.5">
+              <div v-for="app in getAppsByStatus('interview')" :key="app.app_id" class="bg-white p-3.5 rounded-xl border border-indigo-100 shadow-2xs space-y-2 hover:shadow-sm transition">
+                <div>
+                  <h3 class="text-xs font-bold text-slate-900">{{ app.company }}</h3>
+                  <p class="text-2xs text-indigo-600 font-semibold">{{ app.title }}</p>
+                </div>
+                <div class="text-2xs text-slate-500 bg-indigo-50/60 p-1.5 rounded">
+                  💡 建议在模拟面试室中演练该岗位考题
+                </div>
+
+                <div class="pt-2 border-t border-slate-100 flex items-center justify-between text-2xs">
+                  <button @click="moveAppStatus(app, 'offer')" class="px-2 py-0.5 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded font-bold">
+                    🎉 拿 Offer!
+                  </button>
+                  <button @click="moveAppStatus(app, 'rejected')" class="text-slate-400 hover:text-rose-500">
+                    结束
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列 4: 已获 Offer -->
+          <div class="bg-emerald-50/40 rounded-2xl p-3 border border-emerald-100 space-y-3">
+            <div class="flex justify-between items-center px-1">
+              <span class="text-xs font-bold text-emerald-800 flex items-center space-x-1">
+                <span>🎉</span>
+                <span>已录用 (Offer)</span>
+              </span>
+              <span class="text-2xs bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full font-bold">
+                {{ getAppsByStatus('offer').length }}
+              </span>
+            </div>
+
+            <div class="space-y-2.5">
+              <div v-for="app in getAppsByStatus('offer')" :key="app.app_id" class="bg-white p-3.5 rounded-xl border border-emerald-200 shadow-2xs space-y-2">
+                <div class="text-emerald-700 font-bold text-xs">恭喜斩获 Offer！</div>
+                <h3 class="text-xs font-bold text-slate-900">{{ app.company }}</h3>
+                <p class="text-2xs text-slate-600">{{ app.title }}</p>
+                <div v-if="app.salary" class="text-2xs text-emerald-600 font-mono font-bold">{{ app.salary }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 列 5: 流程结束 -->
+          <div class="bg-slate-100/50 rounded-2xl p-3 border border-slate-200 space-y-3">
+            <div class="flex justify-between items-center px-1">
+              <span class="text-xs font-bold text-slate-500 flex items-center space-x-1">
+                <span>📁</span>
+                <span>流程结束</span>
+              </span>
+              <span class="text-2xs bg-slate-200 text-slate-500 px-1.5 py-0.5 rounded-full font-bold">
+                {{ getAppsByStatus('rejected').length }}
+              </span>
+            </div>
+
+            <div class="space-y-2.5">
+              <div v-for="app in getAppsByStatus('rejected')" :key="app.app_id" class="bg-white/80 p-3 rounded-xl border border-slate-200/60 opacity-70 hover:opacity-100 transition space-y-1">
+                <h3 class="text-xs font-medium text-slate-600">{{ app.company }} · {{ app.title }}</h3>
+                <div class="flex justify-end pt-1">
+                  <button @click="deleteApp(app.app_id)" class="text-2xs text-rose-500 hover:text-rose-700">删除记录</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 4: 已匹配岗位库 (Jobs)                -->
+      <!-- ========================================== -->
+      <div v-show="activeTab === 'jobs'" class="space-y-6">
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm">
+          <div class="flex flex-wrap items-center justify-between pb-4 border-b border-slate-100 gap-4">
+            <div>
+              <h2 class="text-base font-bold text-slate-900">本地已分析岗位库</h2>
+              <p class="text-xs text-slate-500">来自 SQLite 数据库 `jobs` 和 `matches` 表</p>
+            </div>
+            <button @click="fetchJobs" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium rounded-lg transition">
+              🔄 刷新
+            </button>
+          </div>
+
+          <div v-if="jobsList.length === 0" class="py-16 text-center text-slate-400 text-sm space-y-2">
+            <div class="text-3xl">📭</div>
+            <p>本地数据库暂无岗位记录</p>
+          </div>
+
+          <div v-else class="divide-y divide-slate-100">
+            <div v-for="job in jobsList" :key="job.id" class="py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div class="space-y-1">
+                <div class="flex items-center space-x-2">
+                  <span class="text-sm font-bold text-slate-900">{{ job.company || '未知公司' }}</span>
+                  <span class="text-slate-400">·</span>
+                  <span class="text-sm font-semibold text-slate-700">{{ job.title || '未知岗位' }}</span>
+                  <span v-if="job.salary" class="text-xs px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-mono font-medium">
+                    {{ job.salary }}
+                  </span>
+                </div>
+                <div class="text-xs text-slate-400">
+                  录入时间: {{ job.fetched_at }} · 状态: <span class="capitalize font-medium text-slate-600">{{ job.app_status }}</span>
+                </div>
+                <div v-if="job.gap_list && job.gap_list.length" class="flex flex-wrap items-center gap-1.5 pt-1">
+                  <span class="text-2xs text-rose-500 font-medium">技能差距:</span>
+                  <span v-for="(gap, gIdx) in job.gap_list" :key="gIdx" class="text-2xs px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-100">
+                    {{ gap }}
+                  </span>
+                </div>
+              </div>
+
+              <div class="flex items-center space-x-3">
+                <button @click="openPackageModal(job)" class="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium rounded-lg text-xs transition">
+                  🎁 生成投递包
+                </button>
+                <div v-if="job.score !== null" class="text-right">
+                  <div class="text-xl font-black font-mono" :class="job.score >= 80 ? 'text-emerald-600' : 'text-slate-500'">
+                    {{ job.score }} <span class="text-xs font-normal text-slate-400">/ 100</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ========================================== -->
+      <!-- TAB 5: 架构路线与评测 (About)            -->
+      <!-- ========================================== -->
+      <div v-show="activeTab === 'about'" class="space-y-6">
+        <div class="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm space-y-4">
+          <h2 class="text-base font-bold text-slate-900">🎯 Job-Agent 架构理念与路线图</h2>
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+            <div class="p-4 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-1.5">
+              <div class="font-bold text-indigo-900 text-sm">1. 硬性规则过滤 (Rule Filter)</div>
+              <p class="text-slate-600 leading-relaxed">对地点、年限、薪资底线走纯代码规则引擎，不过大模型，节省 100% 对应 Token 并具备确定性可解释性。</p>
+            </div>
+            <div class="p-4 rounded-xl bg-sky-50/50 border border-sky-100 space-y-1.5">
+              <div class="font-bold text-sky-900 text-sm">2. 向量语义召回 (Embedding)</div>
+              <p class="text-slate-600 leading-relaxed">使用本地 nomic-embed-text，将个人画像分块与 JD 计算余弦相似度粗排，快速捕捉技能重合语义。</p>
+            </div>
+            <div class="p-4 rounded-xl bg-purple-50/50 border border-purple-100 space-y-1.5">
+              <div class="font-bold text-purple-900 text-sm">3. LLM 结构化精排 (Rubric & Gap)</div>
+              <p class="text-slate-600 leading-relaxed">通过本地 Qwen 模型按 Rubric 量表打分，强类型约束输出差距清单（Gap List）与针对性攻坚建议。</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+
+    <!-- ========================================== -->
+    <!-- 模态框 1: 生成岗位投递包 (Application Pkg) -->
+    <!-- ========================================== -->
+    <transition name="fade">
+      <div v-if="showPackageModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4 overflow-y-auto">
+        <div class="bg-white rounded-2xl max-w-3xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 my-8">
+          
+          <div class="flex justify-between items-center pb-3 border-b border-slate-100">
+            <div>
+              <h3 class="text-base font-bold text-slate-900 flex items-center space-x-2">
+                <span>🎁</span>
+                <span>目标岗位专属投递包 (Application Package)</span>
+              </h3>
+              <p class="text-xs text-slate-500">参考 auto-job-apply 规范 · 破冰开场白 + 定制简历 + 面试预案</p>
+            </div>
+            <button @click="showPackageModal = false" class="text-slate-400 hover:text-slate-600 text-lg">×</button>
+          </div>
+
+          <!-- 模式选择与目标岗位设置 -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <div>
+              <label class="block text-slate-500 mb-1">目标公司</label>
+              <input v-model="targetJobForm.company" type="text" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">目标岗位</label>
+              <input v-model="targetJobForm.title" type="text" class="w-full px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">定制策略</label>
+              <div class="flex space-x-1">
+                <button @click="targetJobForm.mode = 'A'; generatePackage()" :class="targetJobForm.mode === 'A' ? 'bg-indigo-600 text-white' : 'bg-white text-slate-700'" class="flex-1 py-1.5 rounded-lg border border-slate-200 font-semibold transition">
+                  A 版 (保真)
+                </button>
+                <button @click="targetJobForm.mode = 'B'; generatePackage()" :class="targetJobForm.mode === 'B' ? 'bg-purple-600 text-white' : 'bg-white text-slate-700'" class="flex-1 py-1.5 rounded-lg border border-slate-200 font-semibold transition">
+                  B 版 (进取)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 投递包核心成果 1: HR 破冰开场白 (Cold Message) -->
+          <div class="space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold text-slate-800 flex items-center space-x-1">
+                <span>💬</span>
+                <span>HR / Leader 金牌破冰打招呼文案 (直接复制到 Boss / 邮件)</span>
+              </span>
+              <button @click="copyText(generatedPackage.cold_message)" class="text-xs px-2.5 py-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 rounded-md font-semibold transition">
+                复制打招呼话术
+              </button>
+            </div>
+            <textarea :value="generatedPackage.cold_message" rows="5" readonly class="w-full text-xs font-mono p-3 bg-slate-50 border border-slate-200 rounded-xl leading-relaxed focus:outline-none"></textarea>
+          </div>
+
+          <!-- 投递包核心成果 2: 预测面试问题与应答策略 -->
+          <div class="space-y-2">
+            <span class="text-xs font-bold text-slate-800 flex items-center space-x-1">
+              <span>🎯</span>
+              <span>岗位针对性面试高频提问与应答预案</span>
+            </span>
+            <div class="space-y-2">
+              <div v-for="(item, qIdx) in generatedPackage.interview_prep" :key="qIdx" class="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs space-y-1">
+                <div class="font-bold text-slate-800 text-2xs">Q{{ qIdx + 1 }}: {{ item.question }}</div>
+                <div class="text-slate-600 text-2xs leading-relaxed"><span class="text-indigo-600 font-bold">建议回答角度:</span> {{ item.strategy }}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 底部操作按钮 -->
+          <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
+            <button @click="copyText(generatedPackage.tailored_resume_markdown)" class="text-xs text-slate-600 hover:text-slate-900 font-medium">
+              📋 复制本岗位定制简历 Markdown
+            </button>
+            <div class="flex space-x-2">
+              <button @click="markAsAppliedFromPackage" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition">
+                ✔ 标记已投递至看板
+              </button>
+              <button @click="showPackageModal = false" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium">
+                关闭
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </transition>
+
+    <!-- ========================================== -->
+    <!-- 模态框 2: 录入新岗位 (Add Job Modal)      -->
+    <!-- ========================================== -->
+    <transition name="fade">
+      <div v-if="showAddJobModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+          <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+            <h3 class="text-sm font-bold text-slate-900">录入新目标岗位</h3>
+            <button @click="showAddJobModal = false" class="text-slate-400 hover:text-slate-600 text-lg">×</button>
+          </div>
+
+          <div class="space-y-3 text-xs">
+            <div>
+              <label class="block text-slate-500 mb-1">公司名称</label>
+              <input v-model="newJobForm.company" type="text" placeholder="如: 阿里巴巴 / 某创业公司" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">岗位名称</label>
+              <input v-model="newJobForm.title" type="text" placeholder="如: AI Agent 开发工程师" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">薪资范围</label>
+              <input v-model="newJobForm.salary" type="text" placeholder="如: 300/天 或 18-25k" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            </div>
+            <div>
+              <label class="block text-slate-500 mb-1">初始状态</label>
+              <select v-model="newJobForm.status" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+                <option value="pending">📋 准备投递</option>
+                <option value="applied">🚀 已投递</option>
+                <option value="interview">💬 面试中</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-100 flex justify-end space-x-2">
+            <button @click="showAddJobModal = false" class="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs">取消</button>
+            <button @click="submitNewJob" class="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-semibold">保存录入</button>
+          </div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- 底部状态栏 -->
+    <footer class="bg-white border-t border-slate-200 py-3 text-center text-xs text-slate-400 no-print">
+      Job-Agent Workbench · 本地隐私存储 · 简历生成与投递管理闭环
+    </footer>
+
+    <!-- 全局 Toast 提示 -->
+    <transition name="fade">
+      <div v-if="toast.show" class="fixed bottom-6 right-6 z-50 flex items-center space-x-2 px-4 py-2.5 rounded-xl shadow-lg border text-xs font-semibold no-print"
+        :class="toast.type === 'success' ? 'bg-emerald-600 text-white border-emerald-500' : 'bg-rose-600 text-white border-rose-500'">
+        <span>{{ toast.type === 'success' ? '✔' : '✖' }}</span>
+        <span>{{ toast.message }}</span>
+      </div>
+    </transition>
+
+  </div>
+
+  <script>
+    const { createApp, ref, reactive, computed, onMounted } = Vue;
+
+    createApp({
+      setup() {
+        const activeTab = ref('profile');
+        const saving = ref(false);
+        const showRawJson = ref(false);
+        const copied = ref(false);
+        
+        const newSkillInput = ref('');
+        const newTargetJob = ref('');
+        const newTargetCity = ref('');
+        const newBonusItem = ref('');
+
+        const presetSkills = [
+          'Python', 'FastAPI', 'SQLite', 'Docker', 'Git', 'pytest', 
+          'OpenHarness', 'Agent Loop', 'RAG', 'Prompt工程', 'MCP', 'Ollama'
+        ];
+
+        const stats = reactive({
+          jobs_count: 0,
+          matches_count: 0,
+          profiles_count: 0,
+          current_profile_name: ''
+        });
+
+        const jobsList = ref([]);
+        const applications = ref([]);
+        const resumeMarkdown = ref('');
+
+        const showPackageModal = ref(false);
+        const showAddJobModal = ref(false);
+
+        const targetJobForm = reactive({
+          job_id: null,
+          company: '目标公司',
+          title: 'AI Agent 开发工程师',
+          mode: 'A'
+        });
+
+        const generatedPackage = reactive({
+          cold_message: '',
+          tailored_resume_markdown: '',
+          interview_prep: []
+        });
+
+        const newJobForm = reactive({
+          company: '',
+          title: '',
+          salary: '',
+          status: 'pending'
+        });
+
+        const toast = reactive({
+          show: false,
+          message: '',
+          type: 'success'
+        });
+
+        const showToast = (message, type = 'success') => {
+          toast.message = message;
+          toast.type = type;
+          toast.show = true;
+          setTimeout(() => { toast.show = false; }, 3000);
+        };
+
+        const profileData = reactive({
+          name: 'my_profile',
+          resume: {
+            basics: { 姓名: '', 身份: '', 学校: '', 专业: '', 毕业时间: '', 求职类型: '' },
+            skills: [],
+            experiences: [],
+            projects: [],
+            campus: { 英语: '', 竞赛: '', 奖学金: '' },
+            education: { 学校: '', 专业: '', 学历: '', 时间: '' },
+            summary_text: ''
+          },
+          preferences: {
+            目标岗位: [],
+            期望城市: [],
+            薪资底线: '',
+            经验底线: null,
+            加分项: [],
+            备注: ''
+          }
+        });
+
+        const resume = computed(() => profileData.resume || {});
+        const basics = computed(() => profileData.resume.basics || {});
+        const campus = computed(() => profileData.resume.campus || {});
+        const education = computed(() => profileData.resume.education || {});
+        const preferences = computed(() => profileData.preferences || {});
+
+        const loadProfileFromServer = async () => {
+          try {
+            const res = await fetch('/api/profile');
+            if (res.ok) {
+              const data = await res.json();
+              applyProfileData(data);
+            }
+          } catch (e) {
+            console.error('加载画像失败', e);
+          }
+        };
+
+        const loadStatus = async () => {
+          try {
+            const res = await fetch('/api/status');
+            if (res.ok) {
+              const data = await res.json();
+              Object.assign(stats, data.stats);
+            }
+          } catch (e) {}
+        };
+
+        const fetchJobs = async () => {
+          try {
+            const res = await fetch('/api/jobs');
+            if (res.ok) {
+              const data = await res.json();
+              jobsList.value = data.jobs || [];
+            }
+          } catch (e) {}
+        };
+
+        const fetchApplications = async () => {
+          try {
+            const res = await fetch('/api/applications');
+            if (res.ok) {
+              const data = await res.json();
+              applications.value = data.applications || [];
+            }
+          } catch (e) {}
+        };
+
+        const getAppsByStatus = (status) => {
+          return applications.value.filter(a => a.status === status);
+        };
+
+        const moveAppStatus = async (app, newStatus) => {
+          try {
+            const res = await fetch('/api/applications', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                job_id: app.job_id,
+                status: newStatus,
+                applied_at: newStatus === 'applied' ? new Date().toISOString() : app.applied_at
+              })
+            });
+            if (res.ok) {
+              showToast(`岗位已推进至: ${newStatus}`);
+              fetchApplications();
+            }
+          } catch (e) {}
+        };
+
+        const deleteApp = async (appId) => {
+          if (!confirm('确认删除该投递记录？')) return;
+          try {
+            const res = await fetch(`/api/applications/${appId}`, { method: 'DELETE' });
+            if (res.ok) {
+              showToast('记录已删除');
+              fetchApplications();
+            }
+          } catch (e) {}
+        };
+
+        const fetchResumeMarkdown = async () => {
+          try {
+            const res = await fetch('/api/resume/markdown');
+            if (res.ok) {
+              const data = await res.json();
+              resumeMarkdown.value = data.markdown || '';
+            }
+          } catch (e) {}
+        };
+
+        const printResume = () => {
+          window.print();
+        };
+
+        const copyResumeMarkdown = async () => {
+          await fetchResumeMarkdown();
+          copyText(resumeMarkdown.value);
+        };
+
+        const downloadResumeMarkdown = async () => {
+          await fetchResumeMarkdown();
+          const blob = new Blob([resumeMarkdown.value], { type: 'text/markdown;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${basics.value.姓名 || '个人'}简历.md`;
+          a.click();
+          showToast('Markdown 简历下载开始');
+        };
+
+        const openPackageModal = (item) => {
+          if (item) {
+            targetJobForm.job_id = item.job_id || item.id || null;
+            targetJobForm.company = item.company || '目标公司';
+            targetJobForm.title = item.title || '目标岗位';
+          }
+          generatePackage();
+          showPackageModal.value = true;
+        };
+
+        const generatePackage = async () => {
+          try {
+            const res = await fetch('/api/resume/package', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(targetJobForm)
+            });
+            if (res.ok) {
+              const data = await res.json();
+              Object.assign(generatedPackage, data);
+            }
+          } catch (e) {}
+        };
+
+        const markAsAppliedFromPackage = async () => {
+          if (!targetJobForm.job_id) {
+            showToast('请先录入为看板岗位', 'error');
+            return;
+          }
+          await fetch('/api/applications', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              job_id: targetJobForm.job_id,
+              status: 'applied',
+              applied_at: new Date().toISOString()
+            })
+          });
+          showToast('已标记为已投递！');
+          showPackageModal.value = false;
+          fetchApplications();
+        };
+
+        const submitNewJob = async () => {
+          if (!newJobForm.company || !newJobForm.title) {
+            showToast('请填写公司与岗位名称', 'error');
+            return;
+          }
+          try {
+            const res = await fetch('/api/applications/create-job', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(newJobForm)
+            });
+            const data = await res.json();
+            if (res.ok) {
+              showToast(data.message);
+              showAddJobModal.value = false;
+              fetchApplications();
+              fetchJobs();
+            }
+          } catch (e) {}
+        };
+
+        const copyText = async (txt) => {
+          try {
+            await navigator.clipboard.writeText(txt);
+            showToast('已成功复制到剪贴板！');
+          } catch (e) {
+            showToast('复制失败', 'error');
+          }
+        };
+
+        const applyProfileData = (data) => {
+          profileData.name = data.name || 'my_profile';
+          const r = data.resume || {};
+          profileData.resume.basics = r.basics || {};
+          profileData.resume.skills = Array.isArray(r.skills) ? [...r.skills] : [];
+          profileData.resume.experiences = Array.isArray(r.experiences) ? JSON.parse(JSON.stringify(r.experiences)) : [];
+          profileData.resume.projects = Array.isArray(r.projects) ? JSON.parse(JSON.stringify(r.projects)) : [];
+          profileData.resume.campus = r.campus || { 英语: '', 竞赛: '', 奖学金: '' };
+          profileData.resume.education = r.education || { 学校: '', 专业: '', 学历: '', 时间: '' };
+          profileData.resume.summary_text = r.summary_text || '';
+
+          const p = data.preferences || {};
+          profileData.preferences.目标岗位 = Array.isArray(p.目标岗位) ? [...p.目标岗位] : [];
+          profileData.preferences.期望城市 = Array.isArray(p.期望城市) ? [...p.期望城市] : [];
+          profileData.preferences.薪资底线 = p.薪资底线 || '';
+          profileData.preferences.经验底线 = p.经验底线 || null;
+          profileData.preferences.加分项 = Array.isArray(p.加分项) ? [...p.加分项] : [];
+          profileData.preferences.备注 = p.备注 || '';
+        };
+
+        const loadTemplate = async (type) => {
+          try {
+            const res = await fetch(`/api/profile/template/${type}`);
+            if (res.ok) {
+              const data = await res.json();
+              applyProfileData(data);
+              showToast(`已成功载入模板`);
+            }
+          } catch (e) {}
+        };
+
+        const saveProfile = async () => {
+          saving.value = true;
+          try {
+            const res = await fetch('/api/profile', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(profileData)
+            });
+            const result = await res.json();
+            if (res.ok && result.status === 'success') {
+              showToast(result.message);
+              loadStatus();
+            }
+          } catch (e) {
+            showToast('网络异常', 'error');
+          } finally {
+            saving.value = false;
+          }
+        };
+
+        const addSkill = () => {
+          const val = newSkillInput.value.trim().replace(/^[,，]+|[,，]+$/g, '');
+          if (val && !profileData.resume.skills.includes(val)) {
+            profileData.resume.skills.push(val);
+          }
+          newSkillInput.value = '';
+        };
+
+        const handleSkillKeydown = (e) => {
+          if (e.key === ',' || e.key === '，') {
+            e.preventDefault();
+            addSkill();
+          }
+        };
+
+        const addPresetSkill = (preset) => {
+          if (!profileData.resume.skills.includes(preset)) {
+            profileData.resume.skills.push(preset);
+          }
+        };
+
+        const addPreferenceItem = (key, val) => {
+          const item = (val || '').trim();
+          if (item && !profileData.preferences[key].includes(item)) {
+            profileData.preferences[key].push(item);
+          }
+        };
+
+        const addProject = () => {
+          if (!profileData.resume.projects) profileData.resume.projects = [];
+          profileData.resume.projects.unshift({
+            名称: '',
+            角色: '核心开发者',
+            亮点: ['']
+          });
+        };
+
+        const addExperience = () => {
+          if (!profileData.resume.experiences) profileData.resume.experiences = [];
+          profileData.resume.experiences.unshift({
+            公司: '',
+            职位: '',
+            时间: '',
+            亮点: ['']
+          });
+        };
+
+        const exportJson = () => {
+          const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(profileData, null, 2));
+          const dlAnchor = document.createElement('a');
+          dlAnchor.setAttribute('href', dataStr);
+          dlAnchor.setAttribute('download', 'profile.json');
+          dlAnchor.click();
+          showToast('已开始下载 profile.json');
+        };
+
+        const handleFileUpload = (e) => {
+          const file = e.target.files[0];
+          if (!file) return;
+          const reader = new FileReader();
+          reader.onload = (evt) => {
+            try {
+              const parsed = JSON.parse(evt.target.result);
+              applyProfileData(parsed);
+              showToast('本地 JSON 文件解析并填充成功！');
+            } catch (err) {
+              showToast('JSON 格式解析失败', 'error');
+            }
+          };
+          reader.readAsText(file);
+          e.target.value = '';
+        };
+
+        const copyJson = async () => {
+          try {
+            await navigator.clipboard.writeText(JSON.stringify(profileData, null, 2));
+            copied.value = true;
+            setTimeout(() => { copied.value = false; }, 2000);
+            showToast('JSON 已复制！');
+          } catch (e) {}
+        };
+
+        onMounted(() => {
+          loadProfileFromServer();
+          loadStatus();
+          fetchJobs();
+          fetchApplications();
+        });
+
+        return {
+          activeTab, saving, showRawJson, copied,
+          profileData, resume, basics, campus, education, preferences,
+          newSkillInput, newTargetJob, newTargetCity, newBonusItem, presetSkills,
+          stats, jobsList, applications, resumeMarkdown,
+          showPackageModal, showAddJobModal, targetJobForm, generatedPackage, newJobForm,
+          toast,
+          loadTemplate, saveProfile, addSkill, handleSkillKeydown, addPresetSkill,
+          addPreferenceItem, addProject, addExperience, exportJson, handleFileUpload,
+          copyJson, fetchJobs, fetchApplications, getAppsByStatus, moveAppStatus, deleteApp,
+          fetchResumeMarkdown, printResume, copyResumeMarkdown, downloadResumeMarkdown,
+          openPackageModal, generatePackage, markAsAppliedFromPackage, submitNewJob, copyText
+        };
+      }
+    }).mount('#app');
+  </script>
+</body>
+</html>
