@@ -468,29 +468,32 @@
         </div>
       </div>
 
-      <!-- ========================================== -->
-      <!-- TAB 2: 简历生成工坊 (Resume Generator)    -->
-      <!-- ========================================== -->
-      <div v-show="activeTab === 'resume'" class="space-y-6">
+      <!-- ========================================================================= -->
+      <!-- TAB 2: 简历编辑与生成工坊 (Reactive-Resume 风格左侧修改 + 实时 A4 联动)   -->
+      <!-- ========================================================================= -->
+      <div v-show="activeTab === 'resume'" class="space-y-4">
         
-        <!-- 操作栏 -->
+        <!-- 顶栏操作条 (无打印) -->
         <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3 no-print">
           <div class="flex items-center space-x-3">
             <span class="text-indigo-600 text-xl font-bold">📄</span>
             <div>
-              <h2 class="text-sm font-bold text-slate-900">A4 印刷级标准简历实时渲染</h2>
-              <p class="text-xs text-slate-500">参考 Reactive-Resume 规范 · ATS 友好 · 纯净排版</p>
+              <h2 class="text-sm font-bold text-slate-900">简历修改与实时渲染工坊 (Reactive-Resume 体验)</h2>
+              <p class="text-xs text-slate-500">左侧实时修改经历、技能与亮点 · 右侧 A4 画布毫秒级同步联动 · 一键保存入库</p>
             </div>
           </div>
 
           <div class="flex items-center flex-wrap gap-2 text-xs">
-            <button @click="openPackageModal(null)" class="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-medium rounded-lg shadow-sm transition flex items-center space-x-1.5">
-              <span>🎁</span>
-              <span>生成岗位专属投递包</span>
+            <button @click="saveProfile" :disabled="saving" class="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-sm transition flex items-center space-x-1.5">
+              <span>{{ saving ? '⏳ 保存中...' : '💾 保存修改并入库' }}</span>
             </button>
             <button @click="printResume" class="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white font-medium rounded-lg transition flex items-center space-x-1.5">
               <span>🖨️</span>
               <span>打印 / 导出 PDF</span>
+            </button>
+            <button @click="openPackageModal(null)" class="px-3 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 text-white font-medium rounded-lg shadow-sm transition flex items-center space-x-1.5">
+              <span>🎁</span>
+              <span>岗位专属投递包</span>
             </button>
             <button @click="copyResumeMarkdown" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium rounded-lg transition">
               📋 复制 Markdown
@@ -501,102 +504,274 @@
           </div>
         </div>
 
-        <!-- A4 拟真预览白纸容器 -->
-        <div class="resume-paper bg-white max-w-4xl mx-auto p-10 sm:p-14 rounded-2xl border border-slate-200 shadow-xl space-y-6 text-slate-800">
+        <!-- 核心双栏工作台：左侧修改面板 + 右侧 A4 画布 -->
+        <div class="flex flex-col lg:flex-row gap-6 items-start">
           
-          <!-- 头部个人信息 -->
-          <div class="border-b border-slate-200 pb-5 text-center space-y-2">
-            <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-              {{ basics.姓名 || '个人简历' }}
-            </h1>
-            <div class="text-xs sm:text-sm text-slate-600 flex flex-wrap justify-center items-center gap-x-3 gap-y-1 font-medium">
-              <span v-if="basics.身份">{{ basics.身份 }}</span>
-              <span v-if="basics.求职类型">求职意向: {{ basics.求职类型 }}</span>
-              <span v-if="basics.学校">{{ basics.学校 }} · {{ basics.专业 }}</span>
-              <span v-if="education.学历">{{ education.学历 }}</span>
-              <span v-if="basics.毕业时间">{{ basics.毕业时间 }} 毕业</span>
+          <!-- 左侧：修改编辑栏 (独立抽屉折叠面板，随时修改、增删亮点，不参与打印) -->
+          <div class="w-full lg:w-[460px] xl:w-[480px] space-y-4 no-print shrink-0">
+            
+            <!-- 模块 1: 基础个人信息 -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+              <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+                <span class="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                  <span>👤</span>
+                  <span>个人基本信息修改</span>
+                </span>
+                <span class="text-3xs text-slate-400">修改右侧即时生效</span>
+              </div>
+              <div class="grid grid-cols-2 gap-2.5 text-xs">
+                <div>
+                  <label class="block text-slate-400 mb-1 text-3xs">姓名</label>
+                  <input v-model="basics.姓名" type="text" placeholder="你的姓名" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1 text-3xs">当前身份</label>
+                  <input v-model="basics.身份" type="text" placeholder="在校生/应届/AI工程师" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1 text-3xs">学校</label>
+                  <input v-model="basics.学校" type="text" placeholder="毕业/在读院校" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1 text-3xs">专业</label>
+                  <input v-model="basics.专业" type="text" placeholder="专业" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1 text-3xs">最高学历</label>
+                  <input v-model="education.学历" type="text" placeholder="本科/硕士" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+                <div>
+                  <label class="block text-slate-400 mb-1 text-3xs">毕业时间</label>
+                  <input v-model="basics.毕业时间" type="text" placeholder="2027.06" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+                <div class="col-span-2">
+                  <label class="block text-slate-400 mb-1 text-3xs">求职意向 / 职位类型</label>
+                  <input v-model="basics.求职类型" type="text" placeholder="日常实习 / 校招 / AI Agent 开发" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                </div>
+              </div>
             </div>
-          </div>
 
-          <!-- 个人综述 -->
-          <div v-if="resume.summary_text" class="space-y-1.5">
-            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
-              个人综述 / Summary
-            </h2>
-            <p class="text-xs text-slate-700 leading-relaxed text-justify">
-              {{ resume.summary_text }}
-            </p>
-          </div>
-
-          <!-- 专业技能 -->
-          <div v-if="resume.skills && resume.skills.length" class="space-y-1.5">
-            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
-              专业技能 / Technical Skills
-            </h2>
-            <div class="text-xs text-slate-700 flex flex-wrap gap-1.5 pt-0.5">
-              <span v-for="skill in resume.skills" :key="skill" class="px-2 py-0.5 bg-slate-100 rounded text-slate-800 font-mono text-2xs font-semibold">
-                {{ skill }}
+            <!-- 模块 2: 个人综述 / Summary -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-2">
+              <span class="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                <span>💬</span>
+                <span>个人综述 / Summary (修改)</span>
               </span>
+              <textarea v-model="resume.summary_text" rows="3" placeholder="一段话介绍核心竞争力、技术栈与工程亮点..." class="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl leading-relaxed focus:bg-white"></textarea>
             </div>
-          </div>
 
-          <!-- 核心项目经历 -->
-          <div v-if="resume.projects && resume.projects.length" class="space-y-3">
-            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
-              核心项目经历 / Key Projects
-            </h2>
-            <div v-for="proj in resume.projects" :key="proj.名称" class="space-y-1.5">
-              <div class="flex justify-between items-center text-xs font-bold text-slate-900">
-                <span class="text-sm font-bold text-slate-800">{{ proj.名称 }}</span>
-                <span class="text-slate-500 font-medium">{{ proj.角色 }}</span>
+            <!-- 模块 3: 核心项目经历修改 (重点加东西区) -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3.5">
+              <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+                <div class="flex items-center space-x-1.5">
+                  <span class="text-emerald-600 text-sm">🚀</span>
+                  <span class="text-xs font-bold text-slate-900">核心项目经历 (修改与加项)</span>
+                </div>
+                <button @click="addProject" class="px-2.5 py-1 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-bold rounded-lg text-3xs transition">
+                  + 添加新项目
+                </button>
               </div>
-              <ul class="list-disc list-outside pl-4 space-y-1 text-xs text-slate-700 leading-relaxed">
-                <li v-for="bullet in proj.亮点" :key="bullet" v-show="bullet.trim()">
-                  {{ bullet }}
-                </li>
-              </ul>
-            </div>
-          </div>
 
-          <!-- 实习与工作经历 -->
-          <div v-if="resume.experiences && resume.experiences.length" class="space-y-3">
-            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
-              实习与工作经历 / Experience
-            </h2>
-            <div v-for="exp in resume.experiences" :key="exp.公司" class="space-y-1.5">
-              <div class="flex justify-between items-center text-xs font-bold text-slate-900">
-                <span class="text-sm font-bold text-slate-800">{{ exp.公司 }} · {{ exp.职位 }}</span>
-                <span class="text-slate-500 font-medium">{{ exp.时间 }}</span>
+              <!-- 项目列表 -->
+              <div class="space-y-3">
+                <div v-for="(proj, pIdx) in resume.projects" :key="pIdx" class="p-3 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2 relative">
+                  <div class="flex items-center justify-between gap-1 text-xs">
+                    <input v-model="proj.名称" type="text" placeholder="项目名称" class="font-bold text-xs bg-white border border-slate-200 rounded px-2 py-1 flex-1">
+                    <button @click="resume.projects.splice(pIdx, 1)" class="text-slate-400 hover:text-rose-600 text-xs px-1">删除</button>
+                  </div>
+                  <input v-model="proj.角色" type="text" placeholder="担任角色" class="w-full text-2xs bg-white border border-slate-200 rounded px-2 py-1">
+
+                  <!-- 亮点 Bullets -->
+                  <div class="space-y-1.5 pt-1">
+                    <div class="flex justify-between items-center text-3xs font-semibold text-slate-500">
+                      <span>亮点 Bullets (STAR 法则)</span>
+                      <button @click="proj.亮点.push('')" class="text-emerald-700 font-bold hover:underline">+ 加一条亮点</button>
+                    </div>
+                    <div v-for="(b, bIdx) in proj.亮点" :key="bIdx" class="flex items-center space-x-1.5">
+                      <span class="text-slate-400 text-3xs">●</span>
+                      <input v-model="proj.亮点[bIdx]" type="text" class="flex-1 text-2xs bg-white border border-slate-200 rounded px-2 py-1">
+                      <button @click="proj.亮点.splice(bIdx, 1)" class="text-slate-300 hover:text-rose-500 text-xs">×</button>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <ul class="list-disc list-outside pl-4 space-y-1 text-xs text-slate-700 leading-relaxed">
-                <li v-for="bullet in exp.亮点" :key="bullet" v-show="bullet.trim()">
-                  {{ bullet }}
-                </li>
-              </ul>
             </div>
+
+            <!-- 模块 4: 专业技能 Tag 修改 -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+              <span class="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                <span>⚡</span>
+                <span>专业技能清单 (修改)</span>
+              </span>
+              <div class="flex flex-wrap gap-1.5 p-2 bg-slate-50 border border-slate-200 rounded-lg min-h-[42px] items-center">
+                <span v-for="(skill, idx) in resume.skills" :key="idx" class="inline-flex items-center px-2 py-0.5 rounded text-2xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  {{ skill }}
+                  <button @click="resume.skills.splice(idx, 1)" class="ml-1 text-indigo-400 hover:text-indigo-600">×</button>
+                </span>
+                <input v-model="newSkillInput" @keydown.enter.prevent="addSkill" @keydown="handleSkillKeydown" placeholder="输入技能回车添加..." class="bg-transparent text-xs outline-none flex-1 min-w-[80px]">
+              </div>
+              <div class="flex flex-wrap items-center gap-1 text-3xs">
+                <span class="text-slate-400 mr-1">推荐点击添加:</span>
+                <button v-for="preset in presetSkills" :key="preset" @click="addPresetSkill(preset)" class="px-1.5 py-0.5 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 rounded text-slate-600">
+                  + {{ preset }}
+                </button>
+              </div>
+            </div>
+
+            <!-- 模块 5: 实习与工作经历修改 -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-3">
+              <div class="flex justify-between items-center pb-2 border-b border-slate-100">
+                <span class="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                  <span>🏢</span>
+                  <span>实习与工作经历 (修改与加项)</span>
+                </span>
+                <button @click="addExperience" class="px-2.5 py-1 bg-purple-50 text-purple-700 hover:bg-purple-100 font-bold rounded-lg text-3xs transition">
+                  + 添加新经历
+                </button>
+              </div>
+              <div class="space-y-3">
+                <div v-for="(exp, eIdx) in resume.experiences" :key="eIdx" class="p-3 bg-slate-50/70 rounded-xl border border-slate-200 space-y-2">
+                  <div class="flex items-center justify-between gap-1 text-xs">
+                    <input v-model="exp.公司" type="text" placeholder="公司名称" class="font-bold text-xs bg-white border border-slate-200 rounded px-2 py-1 flex-1">
+                    <button @click="resume.experiences.splice(eIdx, 1)" class="text-slate-400 hover:text-rose-600 text-xs px-1">删除</button>
+                  </div>
+                  <div class="grid grid-cols-2 gap-1.5 text-2xs">
+                    <input v-model="exp.职位" placeholder="岗位" class="bg-white border border-slate-200 rounded px-2 py-1">
+                    <input v-model="exp.时间" placeholder="起止时间" class="bg-white border border-slate-200 rounded px-2 py-1">
+                  </div>
+                  <div class="space-y-1.5 pt-1">
+                    <div class="flex justify-between items-center text-3xs font-semibold text-slate-500">
+                      <span>成果 Bullets</span>
+                      <button @click="exp.亮点.push('')" class="text-purple-700 font-bold hover:underline">+ 加一条亮点</button>
+                    </div>
+                    <div v-for="(eb, ebIdx) in exp.亮点" :key="ebIdx" class="flex items-center space-x-1.5">
+                      <span class="text-slate-400 text-3xs">●</span>
+                      <input v-model="exp.亮点[ebIdx]" type="text" class="flex-1 text-2xs bg-white border border-slate-200 rounded px-2 py-1">
+                      <button @click="exp.亮点.splice(ebIdx, 1)" class="text-slate-300 hover:text-rose-500 text-xs">×</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 模块 6: 校园荣誉 -->
+            <div class="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm space-y-2.5">
+              <span class="text-xs font-bold text-slate-900 flex items-center space-x-1.5">
+                <span>🏅</span>
+                <span>校园荣誉与资质修改</span>
+              </span>
+              <div class="space-y-2 text-xs">
+                <input v-model="campus.英语" placeholder="英语能力: 如 CET-6 530+ / 雅思 7.0" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <input v-model="campus.竞赛" placeholder="竞赛荣誉: 如 编程竞赛省二等奖、数学建模" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+                <input v-model="campus.奖学金" placeholder="奖学金: 如 校级优秀学生一等奖学金" class="w-full px-2.5 py-1.5 bg-slate-50 border border-slate-200 rounded-lg">
+              </div>
+            </div>
+
           </div>
 
-          <!-- 教育背景 -->
-          <div v-if="basics.学校 || education.学校" class="space-y-1.5">
-            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
-              教育背景 / Education
-            </h2>
-            <div class="flex justify-between text-xs text-slate-800 font-medium">
-              <span>{{ basics.学校 || education.学校 }} · {{ basics.专业 || education.专业 }}</span>
-              <span class="text-slate-500">{{ education.学历 || basics.最高学历 }} ({{ basics.毕业时间 || education.时间 }})</span>
-            </div>
-          </div>
+          <!-- 右侧：实时 A4 画布 (所见即所得，左边一改字，右边毫秒级同步渲染) -->
+          <div class="flex-1 w-full flex justify-center">
+            
+            <!-- A4 拟真预览白纸容器 -->
+            <div class="resume-paper bg-white w-full max-w-4xl p-10 sm:p-14 rounded-2xl border border-slate-200 shadow-xl space-y-6 text-slate-800">
+              
+              <!-- 头部个人信息 -->
+              <div class="border-b border-slate-200 pb-5 text-center space-y-2">
+                <h1 class="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+                  {{ basics.姓名 || '个人简历' }}
+                </h1>
+                <div class="text-xs sm:text-sm text-slate-600 flex flex-wrap justify-center items-center gap-x-3 gap-y-1 font-medium">
+                  <span v-if="basics.身份">{{ basics.身份 }}</span>
+                  <span v-if="basics.求职类型">求职意向: {{ basics.求职类型 }}</span>
+                  <span v-if="basics.学校">{{ basics.学校 }} · {{ basics.专业 }}</span>
+                  <span v-if="education.学历">{{ education.学历 }}</span>
+                  <span v-if="basics.毕业时间">{{ basics.毕业时间 }} 毕业</span>
+                </div>
+              </div>
 
-          <!-- 荣誉资质 -->
-          <div v-if="campus.英语 || campus.竞赛 || campus.奖学金" class="space-y-1.5">
-            <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
-              荣誉与资质 / Honors
-            </h2>
-            <div class="text-xs text-slate-700 space-y-0.5">
-              <div v-if="campus.英语">● 语言能力: {{ campus.英语 }}</div>
-              <div v-if="campus.竞赛">● 竞赛获奖: {{ campus.竞赛 }}</div>
-              <div v-if="campus.奖学金">● 奖学金荣誉: {{ campus.奖学金 }}</div>
+              <!-- 个人综述 -->
+              <div v-if="resume.summary_text" class="space-y-1.5">
+                <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+                  个人综述 / Summary
+                </h2>
+                <p class="text-xs text-slate-700 leading-relaxed text-justify">
+                  {{ resume.summary_text }}
+                </p>
+              </div>
+
+              <!-- 专业技能 -->
+              <div v-if="resume.skills && resume.skills.length" class="space-y-1.5">
+                <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+                  专业技能 / Technical Skills
+                </h2>
+                <div class="text-xs text-slate-700 flex flex-wrap gap-1.5 pt-0.5">
+                  <span v-for="skill in resume.skills" :key="skill" class="px-2 py-0.5 bg-slate-100 rounded text-slate-800 font-mono text-2xs font-semibold">
+                    {{ skill }}
+                  </span>
+                </div>
+              </div>
+
+              <!-- 核心项目经历 -->
+              <div v-if="resume.projects && resume.projects.length" class="space-y-3">
+                <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+                  核心项目经历 / Key Projects
+                </h2>
+                <div v-for="proj in resume.projects" :key="proj.名称" class="space-y-1.5">
+                  <div class="flex justify-between items-center text-xs font-bold text-slate-900">
+                    <span class="text-sm font-bold text-slate-800">{{ proj.名称 }}</span>
+                    <span class="text-slate-500 font-medium">{{ proj.角色 }}</span>
+                  </div>
+                  <ul class="list-disc list-outside pl-4 space-y-1 text-xs text-slate-700 leading-relaxed">
+                    <li v-for="bullet in proj.亮点" :key="bullet" v-show="bullet.trim()">
+                      {{ bullet }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- 实习与工作经历 -->
+              <div v-if="resume.experiences && resume.experiences.length" class="space-y-3">
+                <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+                  实习与工作经历 / Experience
+                </h2>
+                <div v-for="exp in resume.experiences" :key="exp.公司" class="space-y-1.5">
+                  <div class="flex justify-between items-center text-xs font-bold text-slate-900">
+                    <span class="text-sm font-bold text-slate-800">{{ exp.公司 }} · {{ exp.职位 }}</span>
+                    <span class="text-slate-500 font-medium">{{ exp.时间 }}</span>
+                  </div>
+                  <ul class="list-disc list-outside pl-4 space-y-1 text-xs text-slate-700 leading-relaxed">
+                    <li v-for="bullet in exp.亮点" :key="bullet" v-show="bullet.trim()">
+                      {{ bullet }}
+                    </li>
+                  </ul>
+                </div>
+              </div>
+
+              <!-- 教育背景 -->
+              <div v-if="basics.学校 || education.学校" class="space-y-1.5">
+                <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+                  教育背景 / Education
+                </h2>
+                <div class="flex justify-between text-xs text-slate-800 font-medium">
+                  <span>{{ basics.学校 || education.学校 }} · {{ basics.专业 || education.专业 }}</span>
+                  <span class="text-slate-500">{{ education.学历 || basics.最高学历 }} ({{ basics.毕业时间 || education.时间 }})</span>
+                </div>
+              </div>
+
+              <!-- 荣誉资质 -->
+              <div v-if="campus.英语 || campus.竞赛 || campus.奖学金" class="space-y-1.5">
+                <h2 class="text-sm font-bold text-indigo-700 uppercase tracking-wider border-b border-indigo-100 pb-1">
+                  荣誉与资质 / Honors
+                </h2>
+                <div class="text-xs text-slate-700 space-y-0.5">
+                  <div v-if="campus.英语">● 语言能力: {{ campus.英语 }}</div>
+                  <div v-if="campus.竞赛">● 竞赛获奖: {{ campus.竞赛 }}</div>
+                  <div v-if="campus.奖学金">● 奖学金荣誉: {{ campus.奖学金 }}</div>
+                </div>
+              </div>
+
             </div>
+
           </div>
 
         </div>
