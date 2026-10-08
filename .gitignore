@@ -8,6 +8,10 @@ profile*.md
 jd_cache/
 eval/labeled/
 data/*.db
+data/uploads/
+data/smtp_config.json
+data/resume_attachment_meta.json
+data/rxresume-profile.json
 __pycache__/
 *.pyc
 .venv/

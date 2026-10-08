@@ -8,14 +8,20 @@ import sqlite3
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from resume_generator import generate_application_package, generate_standard_markdown, get_current_profile_data
 from matcher_engine import analyze_jd_match
+from resume_parser import get_attachment_meta, parse_and_save_resume_file
+from auto_applier import (
+    get_smtp_config,
+    save_smtp_config,
+    deliver_job_application,
+    batch_deliver_pending_applications,
+)
 
 BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = BASE_DIR / "data"
@@ -280,36 +286,97 @@ def save_analyzed_match(payload: Dict[str, Any]):
     }
 
 
-@app.get("/api/resume/markdown")
-def get_resume_markdown():
-    """获取当前求职画像生成的标准全量 ATS 简历 Markdown"""
-    md = generate_standard_markdown()
-    return {"markdown": md}
-
-
-@app.post("/api/resume/package")
-def create_application_package(payload: Dict[str, Any]):
+@app.post("/api/resume/upload")
+async def upload_resume_file(file: UploadFile = File(...)):
     """
-    生成针对特定岗位的投递包 (Application Package):
-    包含定制简历 Markdown、HR 打招呼话术 (Cold Message)、以及面试预测
+    上传简历原件文件 (.pdf, .docx, .md, .txt, .json):
+    1. 保存原文件至 data/uploads/ 作为邮件投递简历附件
+    2. 自动抽取姓名、电话、邮箱、学校、专业、学历、核心技能
+    3. 同步更新本地 profile.json 与 SQLite
+    """
+    try:
+        content = await file.read()
+        if not content:
+            raise HTTPException(status_code=400, detail="上传的文件内容为空")
+        meta = parse_and_save_resume_file(file.filename or "resume.pdf", content)
+        return {
+            "status": "success",
+            "message": f"简历【{file.filename}】上传并解析成功！",
+            "attachment": meta,
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"简历解析失败: {str(e)}")
+
+
+@app.get("/api/resume/attachment")
+def get_current_attachment():
+    """获取当前已上传的简历附件信息"""
+    meta = get_attachment_meta()
+    return {"attachment": meta}
+
+
+@app.get("/api/resume/attachment/download")
+def download_resume_attachment():
+    """下载已上传的简历原件附件"""
+    meta = get_attachment_meta()
+    if not meta or not meta.get("file_path"):
+        raise HTTPException(status_code=404, detail="尚未上传任何简历附件")
+    path = Path(meta["file_path"])
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="附件文件丢失")
+    return FileResponse(path, filename=meta.get("filename", path.name))
+
+
+@app.get("/api/apply/smtp-config")
+def get_smtp_configuration():
+    """读取发件邮箱 SMTP 配置"""
+    return get_smtp_config(mask_password=True)
+
+
+@app.post("/api/apply/smtp-config")
+def set_smtp_configuration(payload: Dict[str, Any]):
+    """保存发件邮箱 SMTP 配置"""
+    return save_smtp_config(payload)
+
+
+@app.post("/api/apply/deliver")
+def apply_single_job(payload: Dict[str, Any]):
+    """
+    针对单个岗位执行自动投递:
+    支持 mode: 'email' (邮件投递带简历附件) 或 'platform' (平台打招呼)
+    支持 dry_run: bool (模拟测试预览 vs 真实发送)
     """
     job_id = payload.get("job_id")
-    company = payload.get("company", "目标公司")
-    title = payload.get("title", "目标岗位")
-    mode = payload.get("mode", "A")
+    recipient_email = payload.get("recipient_email")
+    mode = payload.get("mode", "email")
+    dry_run = payload.get("dry_run", True)
 
-    if job_id:
-        with get_db_connection() as conn:
-            row = conn.execute("SELECT company, title FROM jobs WHERE id = ?", (job_id,)).fetchone()
-            if row:
-                company = row["company"] or company
-                title = row["title"] or title
+    if not job_id:
+        raise HTTPException(status_code=400, detail="缺少 job_id")
 
-    package = generate_application_package(
-        {"company": company, "title": title},
-        mode=mode
-    )
-    return package
+    try:
+        result = deliver_job_application(
+            job_id=job_id,
+            recipient_email=recipient_email,
+            mode=mode,
+            dry_run=dry_run,
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/apply/batch")
+def apply_batch_jobs(payload: Dict[str, Any]):
+    """
+    批量投递所有待投递 (pending) 岗位
+    """
+    dry_run = payload.get("dry_run", True)
+    try:
+        result = batch_deliver_pending_applications(dry_run=dry_run)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/applications")
