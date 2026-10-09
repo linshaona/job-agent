@@ -27,7 +27,7 @@
 | P6 | 成本看板 + 简历定制 A/B | ✅ |
 | P7 | 发布包装(README / 博客 / 脱敏开源) | 🚧 进行中 |
 
-施工顺序与验收门见 [../job-agent-roadmap.md](../job-agent-roadmap.md),架构与数据设计见 [../job-agent-plan.md](../job-agent-plan.md),环境细节见 [../job-agent-setup.md](../job-agent-setup.md),设计决策与踩坑记录见 [docs/](docs/)。
+架构与数据设计见 [docs/plan.md](docs/plan.md),施工顺序与验收门见 [docs/roadmap.md](docs/roadmap.md),环境与命令见 [docs/setup.md](docs/setup.md),设计决策与踩坑记录见 [docs/README.md](docs/README.md)。
 
 ## 快速开始
 
@@ -76,7 +76,7 @@ uv run python scripts/daily_brief.py     # 晨报(--register 注册 Windows 每�
 | 技能平均覆盖 | 100% | 同上 |
 | 单次耗时 / 成本 | 380s / ¥0 | 本地 4B 模型,局域网 Ollama |
 
-> ⚠️ 以上为**样例画像**下的脚手架验证结果,**不能写进简历**。P3 待办:换成真实画像、收集 30-50 条真实 JD 逐条标注后重跑,目标字段准确率 >90%、Top-5 命中率 ≥80%。迭代闭环(58% → 87% → 98%,其中 2/12 是标注错误而非模型错误)记录在 [../job-agent-roadmap.md](../job-agent-roadmap.md)。
+> ⚠️ 以上为**样例画像**下的脚手架验证结果,**不能写进简历**。P3 待办:换成真实画像、收集 30-50 条真实 JD 逐条标注后重跑,目标字段准确率 >90%、Top-5 命中率 ≥80%。迭代闭环(58% → 87% → 98%,其中 2/12 是标注错误而非模型错误)记录在 [docs/roadmap.md](docs/roadmap.md)。
 
 ## 安全与合规
 
@@ -98,7 +98,7 @@ job-agent/
   .openharness/          # 项目级 plugin(.mcp.json)与 3 个 skill
   scripts/               # 建库 / 画像 / 匹配 / 晨报 / 成本 / 简历同步
   eval/                  # 标注集 + 三阶段评测脚本 + 报告
-  docs/                  # 设计决策与踩坑记录
+  docs/                  # plan(架构) / roadmap(施工与验收门) / setup(环境) / 设计决策与踩坑
   data/                  # 本地数据库与产物(gitignored)
 ```
 
@@ -106,7 +106,7 @@ job-agent/
 
 ## 技术栈
 
-OpenHarness v0.1.9(skills / MCP / hooks / headless)· FastMCP → 官方 `mcp` SDK · SQLite · FastAPI + uvicorn · nomic-embed-text · qwen3.5-4b-agent(局域网 Ollama,零 API 成本)
+OpenHarness v0.1.9(skills / MCP / hooks / headless)· 官方 `mcp` SDK 自建 8 工具 MCP Server · SQLite · FastAPI + uvicorn + Vue 3 单页工作台 · nomic-embed-text · qwen3.5-4b-agent(局域网 Ollama,零 API 成本)
 
 ## 已知限制
 

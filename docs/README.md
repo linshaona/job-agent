@@ -1,6 +1,6 @@
 # job-agent 设计决策与踩坑记录
 
-本目录收录**为什么这么写**——架构细节见 [../../job-agent-plan.md](../../job-agent-plan.md),施工顺序与验收门见 [../../job-agent-roadmap.md](../../job-agent-roadmap.md),环境命令见 [../../job-agent-setup.md](../../job-agent-setup.md)。这里只留可复用的判断与代价。
+本目录收录**为什么这么写**——架构细节见 [plan.md](plan.md),施工顺序与验收门见 [roadmap.md](roadmap.md),环境命令见 [setup.md](setup.md)。这里只留可复用的判断与代价。
 
 ## 1. 职责切分:skill 管流程,MCP 管数据
 
