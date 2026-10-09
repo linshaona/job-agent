@@ -181,7 +181,8 @@ def generate_email_content(job: Dict[str, Any], profile: Optional[Dict[str, Any]
     subject = f"【求职应聘-{title}】{candidate_name}-{tag_part}-附个人简历"
 
     # 2. 邮件正文
-    core_skills_highlight = "、".join(skills[:5]) if skills else "Unity、C#、C++、URP、Shader Graph"
+    # 兜底文案保持中性:具体技能与项目都来自画像,模板里不预设任何行业/技术栈
+    core_skills_highlight = "、".join(skills[:5]) if skills else "与该岗位要求匹配的核心技术栈"
     projects = resume.get("projects", [])
     proj_lines = []
     for p in projects[:2]:
@@ -189,11 +190,11 @@ def generate_email_content(job: Dict[str, Any], profile: Optional[Dict[str, Any]
         p_highlights = p.get("亮点", [])
         hl = p_highlights[0] if p_highlights else "负责核心模块研发"
         proj_lines.append(f"• 【{p_name}】：{hl}")
-    proj_section = "\n".join(proj_lines) if proj_lines else "• 【项目实践】：具备独立完成游戏玩法设计与全流程落地的实战经验"
+    proj_section = "\n".join(proj_lines) if proj_lines else "• 【项目实践】：具备独立完成需求设计、开发与上线的全流程落地经验"
     
     body = f"""尊敬的 {company} 招聘负责人 / HR 您好：
 
-我非常关注贵司在游戏与软件研发领域的前沿技术与产品，在招聘平台上看到贵司正在招聘【{title}】岗位，我的专业技术栈（{core_skills_highlight}）与该岗位的核心要求高度契合，特此向您自荐！
+我非常关注贵司的技术方向与产品，在招聘平台上看到贵司正在招聘【{title}】岗位，我的专业技术栈（{core_skills_highlight}）与该岗位的核心要求高度契合，特此向您自荐！
 
 一、关于我与核心要求匹配：
 1. 【技术栈基础】：掌握 {core_skills_highlight}，具备良好的软件工程素养、代码规范与数据结构算法基础；

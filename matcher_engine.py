@@ -29,13 +29,11 @@ def get_profile() -> Dict[str, Any]:
 
 
 COMMON_TECH_KEYWORDS = [
-    "Unity", "C#", "C++", "URP", "Shader Graph", "Shader", "Spine", "Spine 2D", "OpenGL", "DirectX",
-    "Unreal", "UE", "3D", "2D", "物理引擎", "Lua", "PlayerPrefs",
     "Python", "FastAPI", "Flask", "Django", "SQL", "MySQL", "PostgreSQL", "SQLite", "Redis",
     "MongoDB", "Docker", "Kubernetes", "Linux", "Git", "pytest", "CI/CD",
     "Agent", "ReAct", "ReWOO", "MCP", "RAG", "LLM", "Prompt", "LangChain", "LlamaIndex",
     "OpenHarness", "Ollama", "PyTorch", "TensorFlow", "Transformer", "BERT", "Embedding",
-    "Java", "Spring", "Go", "Golang", "Rust", "Node.js", "TypeScript", "React", "Vue",
+    "Java", "Spring", "Go", "Golang", "C++", "Rust", "Node.js", "TypeScript", "React", "Vue",
     "Claude Code", "Cursor", "Codex"
 ]
 
@@ -68,7 +66,7 @@ def extract_jd_entities(jd_text: str, default_company: str = "", default_title: 
         exp_required = exp_match.group(1)
 
     # 4. 识别职位标题
-    for t_kw in ["游戏开发", "Unity开发", "Unity客户端", "游戏研发实习生", "游戏客户端开发", "C++游戏开发", "AI应用开发", "AI Agent", "Agent开发", "大模型算法", "后端开发", "Python开发", "算法工程师", "软件开发实习生"]:
+    for t_kw in ["AI应用开发", "AI Agent", "Agent开发", "大模型算法", "后端开发", "Python开发", "算法工程师", "软件开发实习生"]:
         if t_kw in jd_text:
             title = t_kw
             break
@@ -172,13 +170,13 @@ def analyze_jd_match(
 
     # 维度 2: 业务相关度 (1-5 分)
     dim_business = 3
-    if any(k in job_title for k in ["游戏", "Unity", "客户端", "Agent", "AI", "大模型", "Python", "C#", "C++"]):
+    if any(k in job_title for k in ["Agent", "AI", "大模型", "Python"]):
         dim_business = 5
     elif any(k in job_title for k in ["后端", "研发", "软件"]):
         dim_business = 4
 
     # 维度 3: 个人加分项 (1-5 分)
-    dim_bonus = 4 if any(k in jd_text for k in ["开源", "项目", "架构", "独立开发", "全流程", "评测", "竞赛", "Shader", "物理"]) else 3
+    dim_bonus = 4 if any(k in jd_text for k in ["开源", "项目", "架构", "全流程", "评测"]) else 3
 
     # 加权总分 = 技能45% + 业务35% + 加分20%
     weighted_score = int((dim_skill / 5.0) * 45 + (dim_business / 5.0) * 35 + (dim_bonus / 5.0) * 20)
@@ -199,10 +197,7 @@ def analyze_jd_match(
         advice.append(f"【技能突击】针对 JD 提及的【{', '.join(gap_skills[:3])}】，建议在面试前了解核心原理并在简历定制版中补充相关技术名词。")
     if matching_skills:
         advice.append(f"【核心优势】你的【{', '.join(matching_skills[:4])}】与该岗位高度对齐，面试时重点围绕{focus}展示闭环能力。")
-    if any(k in job_title for k in ["游戏", "Unity", "客户端"]):
-        advice.append("【提问预案】建议提前准备好 C#/C++ 语言基础、Unity 生命周期与渲染管线（URP/Shader Graph）、以及 PlayerPrefs 数据持久化和物理碰撞优化以应对深挖。")
-    else:
-        advice.append("【提问预案】建议提前准备好核心项目的架构选型、性能调优及算法赛事的工程落地实践以应对深挖。")
+    advice.append("【提问预案】建议提前准备好核心项目的架构选型与性能调优细节以应对深挖。")
 
     return {
         "company": comp_name,

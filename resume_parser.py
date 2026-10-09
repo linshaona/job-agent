@@ -34,13 +34,11 @@ DB_PATH = DATA_DIR / "job.db"
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
 COMMON_TECH_KEYWORDS = [
-    "Unity", "C#", "C++", "URP", "Shader Graph", "Shader", "Spine", "Spine 2D", "OpenGL", "DirectX",
-    "Unreal", "UE", "3D", "2D", "物理引擎", "Lua", "PlayerPrefs",
     "Python", "FastAPI", "Flask", "Django", "SQL", "MySQL", "PostgreSQL", "SQLite", "Redis",
     "MongoDB", "Docker", "Kubernetes", "Linux", "Git", "pytest", "CI/CD",
     "Agent", "ReAct", "ReWOO", "MCP", "RAG", "LLM", "Prompt", "LangChain", "LlamaIndex",
     "OpenHarness", "Ollama", "PyTorch", "TensorFlow", "Transformer", "BERT", "Embedding",
-    "Java", "Spring", "Go", "Golang", "Rust", "Node.js", "TypeScript", "React", "Vue",
+    "Java", "Spring", "Go", "Golang", "C++", "Rust", "Node.js", "TypeScript", "React", "Vue",
     "Claude Code", "Cursor", "Codex"
 ]
 
