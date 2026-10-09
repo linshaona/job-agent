@@ -186,11 +186,19 @@ def analyze_jd_match(
         weighted_score = min(weighted_score, 55)
 
     # 生成突击建议
+    # 项目名属于画像数据,从 profile 读:代码里不写死任何具体项目,换画像文案自动跟着变
+    focus_projects = []
+    for p in resume.get("projects", [])[:2]:
+        if isinstance(p, dict) and p.get("名称"):
+            # 只取项目名主干,去掉括号里的补充说明,避免句子过长
+            focus_projects.append(str(p["名称"]).split("(")[0].split("（")[0].strip())
+    focus = "、".join([f for f in focus_projects if f]) or "你的核心实战项目"
+
     advice = []
     if gap_skills:
         advice.append(f"【技能突击】针对 JD 提及的【{', '.join(gap_skills[:3])}】，建议在面试前了解核心原理并在简历定制版中补充相关技术名词。")
     if matching_skills:
-        advice.append(f"【核心优势】你的【{', '.join(matching_skills[:4])}】与该岗位高度对齐，面试时重点围绕 Unity 3D 物理解谜小游戏与 Spine 2D 动态壁纸实战项目展示闭环能力。")
+        advice.append(f"【核心优势】你的【{', '.join(matching_skills[:4])}】与该岗位高度对齐，面试时重点围绕{focus}展示闭环能力。")
     if any(k in job_title for k in ["游戏", "Unity", "客户端"]):
         advice.append("【提问预案】建议提前准备好 C#/C++ 语言基础、Unity 生命周期与渲染管线（URP/Shader Graph）、以及 PlayerPrefs 数据持久化和物理碰撞优化以应对深挖。")
     else:
