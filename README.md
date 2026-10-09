@@ -44,7 +44,7 @@ uv run python scripts/seed_profile.py    # 写入简历画像(样例或自己的
 start_web.bat
 ```
 
-默认 http://127.0.0.1:8010(与 issue-pr-agent 的 8000 错开;`set PORT=8020` 可覆盖)。工作台提供画像可视化编辑、在线 JD 匹配工坊、简历原件上传、投递看板与 SMTP 自动投递。
+默认 http://127.0.0.1:8010。工作台提供画像可视化编辑、在线 JD 匹配工坊、简历原件上传、投递看板与 SMTP 自动投递。
 
 **命令行**:
 
