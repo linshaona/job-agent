@@ -8,6 +8,12 @@
    - 支持 Dry-Run (试跑预览) 与真实投递
 2. 平台专属打招呼话术直投 (Boss/猎聘/脉脉 Cold Message)
 3. 状态闭环: 自动将岗位流转至看板的 'applied' (已投递) 状态并落盘投递日志
+
+安全边界(投递不可逆,所以默认最保守):
+- 默认 dry_run 模拟,只有显式 dry_run=False 才真正发信;
+- 真实批量投递必须再显式 confirm=True;
+- 单次批量上限 MAX_BATCH_PER_RUN(默认 5),每日真实投递上限 MAX_REAL_SENDS_PER_DAY(默认 10),
+  可用环境变量 JOB_AGENT_MAX_BATCH / JOB_AGENT_MAX_DAILY_SENDS 覆盖。
 """
 
 import json
@@ -31,6 +37,33 @@ DATA_DIR = BASE_DIR / "data"
 SMTP_CONFIG_PATH = DATA_DIR / "smtp_config.json"
 PROFILE_PATH = BASE_DIR / "profile.json"
 DB_PATH = DATA_DIR / "job.db"
+
+
+def _env_int(name: str, default: int) -> int:
+    """读取正整数环境变量,非法值回退默认"""
+    try:
+        value = int(os.environ.get(name, "") or default)
+    except (TypeError, ValueError):
+        return default
+    return value if value > 0 else default
+
+
+# ---- 安全边界(可用环境变量覆盖) ----
+# 投递是不可逆的外部副作用:默认只做模拟;批量需要显式确认;每日有熔断上限。
+MAX_BATCH_PER_RUN = _env_int("JOB_AGENT_MAX_BATCH", 5)
+MAX_REAL_SENDS_PER_DAY = _env_int("JOB_AGENT_MAX_DAILY_SENDS", 10)
+
+
+def sent_today() -> int:
+    """今日已标记为已投递的岗位数(按本地日期统计),用于每日熔断"""
+    if not DB_PATH.exists():
+        return 0
+    with sqlite3.connect(DB_PATH) as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) FROM applications "
+            "WHERE status = 'applied' AND date(applied_at) = date('now', 'localtime')"
+        ).fetchone()
+    return int(row[0] or 0) if row else 0
 
 
 def load_profile() -> Dict[str, Any]:
@@ -105,6 +138,12 @@ def save_smtp_config(data: Dict[str, Any]) -> Dict[str, Any]:
     }
 
     SMTP_CONFIG_PATH.write_text(json.dumps(new_cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+    # 授权码是明文落盘(该文件已 gitignore);尽量收紧为仅本人可读写。
+    # 更稳的做法是把授权码放环境变量 SMTP_USER/SMTP_PASS,这里只作兜底。
+    try:
+        os.chmod(SMTP_CONFIG_PATH, 0o600)
+    except OSError:
+        pass
     return {"status": "success", "message": "SMTP 投递邮箱配置已成功保存！"}
 
 
@@ -142,16 +181,25 @@ def generate_email_content(job: Dict[str, Any], profile: Optional[Dict[str, Any]
     subject = f"【求职应聘-{title}】{candidate_name}-{tag_part}-附个人简历"
 
     # 2. 邮件正文
-    core_skills_highlight = "、".join(skills[:5]) if skills else "Python、FastAPI、AI Agent 研发"
+    core_skills_highlight = "、".join(skills[:5]) if skills else "Unity、C#、C++、URP、Shader Graph"
+    projects = resume.get("projects", [])
+    proj_lines = []
+    for p in projects[:2]:
+        p_name = p.get("名称", "")
+        p_highlights = p.get("亮点", [])
+        hl = p_highlights[0] if p_highlights else "负责核心模块研发"
+        proj_lines.append(f"• 【{p_name}】：{hl}")
+    proj_section = "\n".join(proj_lines) if proj_lines else "• 【项目实践】：具备独立完成游戏玩法设计与全流程落地的实战经验"
     
     body = f"""尊敬的 {company} 招聘负责人 / HR 您好：
 
-我非常关注贵司在行业内的前沿技术实践，在招聘平台上看到贵司正在招聘【{title}】岗位，我的工程背景、技术栈沉淀与该岗位的核心诉求高度契合，特此向您自荐！
+我非常关注贵司在游戏与软件研发领域的前沿技术与产品，在招聘平台上看到贵司正在招聘【{title}】岗位，我的专业技术栈（{core_skills_highlight}）与该岗位的核心要求高度契合，特此向您自荐！
 
-一、关于我与核心技术匹配：
-1. 【技术栈沉淀】：精通 {core_skills_highlight}，具备良好的软件工程素养与代码整洁习惯；
-2. 【智能体工程落地】：主导研发了自主 Issue-to-PR 编码智能体（已完成真实 GitHub 自动化闭环与四层安全防御栈）及基于 OpenHarness 架构的求职 Agent 工作台；
-3. 【工程化与评测】：深入理解 ReWOO/ReAct 规划流、MCP (Model Context Protocol) 协议拓展与评测驱动开发（Eval-Driven）。
+一、关于我与核心要求匹配：
+1. 【技术栈基础】：掌握 {core_skills_highlight}，具备良好的软件工程素养、代码规范与数据结构算法基础；
+2. 【实战项目落地】：
+{proj_section}
+3. 【工程效率与成长】：熟练运用 Git 版本管理，并善于利用 Claude Code / Cursor 等 AI Agent 辅助编程工具高效攻关，学习能力强，渴望在实战环境中为团队贡献价值。
 
 二、简历附件与联系方式：
 我的完整个人简历已随信附上（详见附件），期待能有机会进一步与您沟通交流。
@@ -174,7 +222,7 @@ def deliver_job_application(
     job_id: int,
     recipient_email: Optional[str] = None,
     mode: str = "email",  # 'email' 或 'platform'
-    dry_run: bool = False
+    dry_run: bool = True  # 默认模拟:真实投递必须由调用方显式要求
 ) -> Dict[str, Any]:
     """
     执行单个岗位自动投递流水线
@@ -224,6 +272,13 @@ def deliver_job_application(
         if dry_run:
             delivery_log = f"[模拟测试] 成功生成投递邮件至 {target_email}，挂载附件: {attachment_filename or '无'}"
         else:
+            # 每日熔断:邮件一旦发出无法撤回,先核对今日配额
+            already_sent = sent_today()
+            if already_sent >= MAX_REAL_SENDS_PER_DAY:
+                raise ValueError(
+                    f"已达每日真实投递上限({MAX_REAL_SENDS_PER_DAY} 封,今日已投 {already_sent} 封),"
+                    "请明天再投,或先用模拟测试预览"
+                )
             # 真实通过 SMTP 发送邮件
             try:
                 msg = MIMEMultipart()
@@ -267,8 +322,8 @@ def deliver_job_application(
         # 平台直投模式
         delivery_log = f"已生成针对 {job.get('company')} 的平台直投推荐信"
 
-    # 5. 更新 SQLite 数据库中的 applications 表
-    if success:
+    # 5. 更新 SQLite 数据库中的 applications 表 (仅真实投递或平台打招呼确认时标记为 applied)
+    if success and not dry_run:
         with sqlite3.connect(DB_PATH) as conn:
             existing = conn.execute("SELECT id FROM applications WHERE job_id = ?", (job_id,)).fetchone()
             if existing:
@@ -310,19 +365,50 @@ def deliver_job_application(
     }
 
 
-def batch_deliver_pending_applications(dry_run: bool = True) -> Dict[str, Any]:
+def batch_deliver_pending_applications(
+    dry_run: bool = True,
+    limit: Optional[int] = None,
+    confirm: bool = False,
+) -> Dict[str, Any]:
     """
     批量自动投递所有待投递 (pending) 的岗位
+
+    安全边界:
+    - dry_run 默认 True:默认只预览收件人与正文,不发送;
+    - 真实批量投递必须显式 confirm=True,否则拒绝——批量误发无法撤回;
+    - 单次最多 MAX_BATCH_PER_RUN 个,并受每日真实投递上限约束。
     """
+    if not dry_run and not confirm:
+        raise ValueError(
+            "真实批量投递需要 confirm=true 显式确认(邮件发出后无法撤回);"
+            "建议先执行 dry_run 预览收件人与正文"
+        )
+
+    quota_remaining = max(MAX_REAL_SENDS_PER_DAY - sent_today(), 0)
+    requested = MAX_BATCH_PER_RUN if limit is None else int(limit)
+    effective_limit = max(1, min(requested, MAX_BATCH_PER_RUN))
+    if not dry_run:
+        effective_limit = min(effective_limit, quota_remaining)
+        if effective_limit <= 0:
+            raise ValueError(
+                f"今日真实投递配额已用尽({MAX_REAL_SENDS_PER_DAY} 封),请明天再投或用 dry_run 预览"
+            )
+
     with sqlite3.connect(DB_PATH) as conn:
         conn.row_factory = sqlite3.Row
+        total_pending = int(
+            conn.execute("SELECT COUNT(*) FROM applications WHERE status = 'pending'").fetchone()[0] or 0
+        )
         rows = conn.execute(
             """
             SELECT a.job_id, j.company, j.title, j.jd_raw
             FROM applications a
             JOIN jobs j ON a.job_id = j.id
             WHERE a.status = 'pending'
-            """
+            ORDER BY a.id
+            LIMIT ?
+            """,
+            (effective_limit,),
         ).fetchall()
 
     results = []
@@ -341,10 +427,14 @@ def batch_deliver_pending_applications(dry_run: bool = True) -> Dict[str, Any]:
             skipped.append({"job_id": job_id, "company": r["company"], "reason": "JD 中无邮箱"})
 
     return {
-        "total_pending": len(rows),
+        "total_pending": total_pending,
+        "processed_count": len(rows),
         "delivered_count": len(results),
         "skipped_count": len(skipped),
         "delivered": results,
         "skipped": skipped,
-        "dry_run": dry_run
+        "dry_run": dry_run,
+        "confirm": confirm,
+        "limit_applied": effective_limit,
+        "daily_quota": {"limit": MAX_REAL_SENDS_PER_DAY, "remaining": quota_remaining},
     }

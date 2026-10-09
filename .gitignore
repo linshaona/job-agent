@@ -12,6 +12,11 @@ data/uploads/
 data/smtp_config.json
 data/resume_attachment_meta.json
 data/rxresume-profile.json
+
+# 个人简历生成/同步脚本:写死了真实姓名、手机号、邮箱与本地路径,只在本机用,严禁入库
+scripts/generate_agent_resume_json.py
+scripts/update_resume_json.py
+
 __pycache__/
 *.pyc
 .venv/

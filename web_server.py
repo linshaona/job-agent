@@ -17,8 +17,11 @@ from pydantic import BaseModel
 from matcher_engine import analyze_jd_match
 from resume_parser import get_attachment_meta, parse_and_save_resume_file
 from auto_applier import (
+    MAX_BATCH_PER_RUN,
+    MAX_REAL_SENDS_PER_DAY,
     get_smtp_config,
     save_smtp_config,
+    sent_today,
     deliver_job_application,
     batch_deliver_pending_applications,
 )
@@ -344,7 +347,7 @@ def apply_single_job(payload: Dict[str, Any]):
     """
     针对单个岗位执行自动投递:
     支持 mode: 'email' (邮件投递带简历附件) 或 'platform' (平台打招呼)
-    支持 dry_run: bool (模拟测试预览 vs 真实发送)
+    支持 dry_run: bool (默认 True 只做模拟预览;传 False 才真实发信)
     """
     job_id = payload.get("job_id")
     recipient_email = payload.get("recipient_email")
@@ -362,6 +365,9 @@ def apply_single_job(payload: Dict[str, Any]):
             dry_run=dry_run,
         )
         return result
+    except ValueError as e:
+        # 缺少收件邮箱、未配置 SMTP、超出每日投递上限等:属于可预期的拒绝,不是服务器故障
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -369,14 +375,32 @@ def apply_single_job(payload: Dict[str, Any]):
 @app.post("/api/apply/batch")
 def apply_batch_jobs(payload: Dict[str, Any]):
     """
-    批量投递所有待投递 (pending) 岗位
+    批量投递待投递 (pending) 岗位
+
+    默认 dry_run=True 只预览;真实批量投递需要 confirm=true 显式确认,
+    且受单次批量上限与每日投递上限约束。
     """
     dry_run = payload.get("dry_run", True)
+    confirm = bool(payload.get("confirm", False))
+    limit = payload.get("limit")
     try:
-        result = batch_deliver_pending_applications(dry_run=dry_run)
+        result = batch_deliver_pending_applications(dry_run=dry_run, limit=limit, confirm=confirm)
         return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/apply/quota")
+def get_apply_quota():
+    """查看投递安全边界:今日已投、每日上限、单次批量上限"""
+    return {
+        "sent_today": sent_today(),
+        "daily_limit": MAX_REAL_SENDS_PER_DAY,
+        "daily_remaining": max(MAX_REAL_SENDS_PER_DAY - sent_today(), 0),
+        "max_batch_per_run": MAX_BATCH_PER_RUN,
+    }
 
 
 @app.get("/api/applications")

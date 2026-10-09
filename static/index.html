@@ -1174,7 +1174,7 @@
             showToast('当前没有待投递的岗位', 'error');
             return;
           }
-          if (!confirm(`准备对 ${count} 个待投递岗位执行批量自动投递（默认先执行安全模拟测试）。确认开始？`)) return;
+          if (!confirm(`准备对 ${count} 个待投递岗位执行批量自动投递（仅安全模拟测试，不会真实发信）。确认开始？`)) return;
 
           try {
             const res = await fetch('/api/apply/batch', {
@@ -1184,8 +1184,13 @@
             });
             const data = await res.json();
             if (res.ok) {
-              alert(`批量投递处理完成！\n总待投数: ${data.total_pending}\n成功投递: ${data.delivered_count}\n跳过/无邮箱: ${data.skipped_count}`);
+              const quota = data.daily_quota
+                ? `\n本次处理: ${data.processed_count}/${data.total_pending}（单次上限 ${data.limit_applied}）\n每日真实投递额度: 剩余 ${data.daily_quota.remaining}/${data.daily_quota.limit}`
+                : '';
+              alert(`批量投递处理完成（模拟）！\n总待投数: ${data.total_pending}\n成功投递: ${data.delivered_count}\n跳过/无邮箱: ${data.skipped_count}${quota}\n\n真实发送请到单个岗位的投递面板选择「真实发送」。`);
               fetchApplications();
+            } else {
+              showToast(data.detail || '批量投递被拒绝', 'error');
             }
           } catch (e) {
             showToast('批量投递异常', 'error');
